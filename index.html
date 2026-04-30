@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trip Mapper</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #app { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; font-size: 13px; }
+
+    :root {
+      --bg0: #1e1e2e; --bg1: #181825; --bg2: #313244; --bg3: #45475a;
+      --fg: #cdd6f4;  --fg2: #a6adc8;
+      --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af;
+      --red: #f38ba8;    --mauve: #cba6f7;
+    }
+
+    #app { display: flex; flex-direction: column; }
+
+    /* ── Top bar ── */
+    #topbar {
+      flex-shrink: 0;
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--bg3);
+      color: var(--fg);
+    }
+    #topbar h1 { font-size: 15px; font-weight: 700; margin-right: 4px; white-space: nowrap; }
+
+    /* ── Main ── */
+    #main { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 270px; flex-shrink: 0;
+      background: var(--bg0); color: var(--fg);
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--bg3);
+      overflow: hidden;
+    }
+    .tabs { display: flex; border-bottom: 1px solid var(--bg3); }
+    .tab-btn {
+      flex: 1; padding: 8px;
+      background: none; border: none; color: var(--fg2);
+      cursor: pointer; font-size: 13px; font-weight: 600;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+    .tab-btn:hover:not(.active) { background: var(--bg2); }
+
+    .tab-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .tab-panel.active { display: flex; }
+
+    .form-section {
+      padding: 10px; border-bottom: 1px solid var(--bg3);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .form-row { display: flex; gap: 6px; align-items: center; }
+    .form-row label { color: var(--fg2); font-size: 11px; white-space: nowrap; min-width: 36px; }
+
+    input[type="text"], input[type="number"], select, textarea {
+      background: var(--bg2); border: 1px solid var(--bg3);
+      color: var(--fg); border-radius: 5px; padding: 4px 7px;
+      font-size: 12px; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; height: 44px; }
+    input[type="color"] {
+      width: 30px; height: 24px; padding: 1px;
+      border-radius: 4px; cursor: pointer; flex-shrink: 0;
+    }
+
+    .btn {
+      padding: 5px 10px; border: none; border-radius: 5px;
+      cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .btn-accent { background: var(--accent); color: var(--bg0); }
+    .btn-green  { background: var(--green);  color: var(--bg0); }
+    .btn-yellow { background: var(--yellow); color: var(--bg0); }
+    .btn-red    { background: var(--red);    color: var(--bg0); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-sm {
+      padding: 2px 7px; font-size: 11px;
+      background: var(--bg3); color: var(--fg2);
+      border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;
+    }
+    .btn-sm.fly:hover  { background: var(--accent); color: var(--bg0); }
+    .btn-sm.del:hover  { background: var(--red);    color: var(--bg0); }
+
+    .item-list {
+      flex: 1; overflow-y: auto; padding: 6px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .item-list::-webkit-scrollbar { width: 5px; }
+    .item-list::-webkit-scrollbar-track { background: var(--bg1); }
+    .item-list::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+
+    .list-item {
+      background: var(--bg2); border-radius: 6px;
+      padding: 6px 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .item-body { flex: 1; overflow: hidden; }
+    .item-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-sub  { color: var(--fg2); font-size: 11px; }
+    .route-swatch { width: 26px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Map ── */
+    #map { flex: 1; }
+
+    .marker-label {
+      background: white; border: 2px solid #89b4fa;
+      border-radius: 4px; padding: 1px 5px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      background: var(--bg1); color: var(--fg);
+      padding: 5px 16px; border-radius: 20px; font-size: 12px;
+      pointer-events: none; opacity: 0; transition: opacity .25s;
+      z-index: 9999; border: 1px solid var(--bg3);
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <h1>Trip Mapper</h1>
+    <label style="color:var(--fg2);font-size:12px;white-space:nowrap;">Map theme</label>
+    <select id="theme-select" style="width:150px;">
+      <option value="voyager">Voyager</option>
+      <option value="light">Light (Positron)</option>
+      <option value="dark">Dark Matter</option>
+      <option value="osm">OSM Standard</option>
+    </select>
+    <div style="flex:1"></div>
+    <button class="btn btn-green"  id="btn-export">Export JSON</button>
+    <button class="btn btn-yellow" id="btn-import">Import JSON</button>
+    <button class="btn btn-red"    id="btn-clear">Clear all</button>
+    <input id="file-input" type="file" accept=".json" style="display:none" />
+  </div>
+
+  <div id="main">
+    <div id="sidebar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="locations">Locations</button>
+        <button class="tab-btn"        data-tab="routes">Routes</button>
+      </div>
+
+      <!-- Locations tab -->
+      <div id="tab-locations" class="tab-panel active">
+        <div class="form-section">
+          <input id="loc-name" type="text" placeholder="Location name" />
+          <div class="form-row" style="gap:4px;">
+            <input id="loc-lat" type="number" placeholder="Latitude"  step="any" />
+            <input id="loc-lng" type="number" placeholder="Longitude" step="any" />
+          </div>
+          <textarea id="loc-note" placeholder="Notes (optional)"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:var(--fg2);font-size:11px;">Click map to fill coords</span>
+            <button class="btn btn-accent" id="btn-add-loc">Add</button>
+          </div>
+        </div>
+        <div class="item-list" id="loc-list"></div>
+      </div>
+
+      <!-- Routes tab -->
+      <div id="tab-routes" class="tab-panel">
+        <div class="form-section">
+          <div class="form-row">
+            <label>From</label>
+            <select id="route-from"></select>
+          </div>
+          <div class="form-row">
+            <label>To</label>
+            <select id="route-to"></select>
+          </div>
+          <div class="form-row">
+            <label>Type</label>
+            <select id="route-type">
+              <option value="car">🚗 Car</option>
+              <option value="walk">🚶 Walk</option>
+              <option value="bicycle">🚲 Bicycle</option>
+              <option value="flight">✈️ Flight</option>
+              <option value="ferry">⛴️ Ferry</option>
+              <option value="subway">🚇 Subway</option>
+              <option value="train">🚆 Train</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Color</label>
+            <select id="route-color-mode" style="flex:1;">
+              <option value="default">Default for type</option>
+              <option value="custom">Custom…</option>
+              <option value="none">No color (gray)</option>
+            </select>
+            <input id="route-color-pick" type="color" value="#e67e22" style="display:none;" />
+          </div>
+          <div class="form-row">
+            <label>Stroke</label>
+            <select id="route-style">
+              <option value="default">Default for type</option>
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Label</label>
+            <input id="route-label" type="text" placeholder="Optional label" />
+          </div>
+          <div style="display:flex;justify-content:flex-end;">
+            <button class="btn btn-accent" id="btn-add-route">Add Route</button>
+          </div>
+        </div>
+        <div class="item-list" id="route-list"></div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ── Themes ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  voyager: {
+    url:  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
+    sub:  'abcd',
+  },
+  light: {
+    url:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
+    sub:  'abcd',
+  },
+  dark: {
+    url:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
+    sub:  'abcd',
+  },
+  osm: {
+    url:  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    sub:  'abc',
+  },
+};
+
+// ── Route type metadata ───────────────────────────────────────────────────────
+const ROUTE_META = {
+  car:     { color: '#e67e22', dashArray: null,   weight: 4, routing: 'osrm-driving' },
+  walk:    { color: '#27ae60', dashArray: '5 5',  weight: 3, routing: 'osrm-foot'    },
+  bicycle: { color: '#f39c12', dashArray: '5 5',  weight: 3, routing: 'osrm-cycling' },
+  flight:  { color: '#3498db', dashArray: '10 6', weight: 2, routing: 'greatcircle'  },
+  ferry:   { color: '#16a085', dashArray: '5 10', weight: 3, routing: 'straight'     },
+  subway:  { color: '#9b59b6', dashArray: null,   weight: 4, routing: 'straight'     },
+  train:   { color: '#c0392b', dashArray: null,   weight: 4, routing: 'straight'     },
+};
+
+const TYPE_EMOJI = { car:'🚗', walk:'🚶', bicycle:'🚲', flight:'✈️', ferry:'⛴️', subway:'🚇', train:'🚆' };
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let locations   = [];
+let routes      = [];
+let locMarkers  = [];   // { marker, labelMkr }
+let routeLayers = [];   // leaflet Polyline | null, parallel to routes[]
+
+// ── Map setup ─────────────────────────────────────────────────────────────────
+const map = L.map('map').setView([20, 0], 2);
+let tileLayer = null;
+
+function setTheme(key) {
+  const t = THEMES[key] || THEMES.voyager;
+  if (tileLayer) map.removeLayer(tileLayer);
+  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: 19 }).addTo(map);
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+// ── Geometry helpers ──────────────────────────────────────────────────────────
+function greatCirclePoints(lat1, lng1, lat2, lng2, n = 80) {
+  const toR = d => d * Math.PI / 180;
+  const toD = r => r * 180 / Math.PI;
+  const p1 = toR(lat1), l1 = toR(lng1), p2 = toR(lat2), l2 = toR(lng2);
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((l2 - l1) / 2) ** 2
+  ));
+  if (d === 0) return [[lat1, lng1]];
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const f = i / n;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(p1) * Math.cos(l1) + B * Math.cos(p2) * Math.cos(l2);
+    const y = A * Math.cos(p1) * Math.sin(l1) + B * Math.cos(p2) * Math.sin(l2);
+    const z = A * Math.sin(p1) + B * Math.sin(p2);
+    pts.push([toD(Math.atan2(z, Math.sqrt(x * x + y * y))), toD(Math.atan2(y, x))]);
+  }
+  return pts;
+}
+
+async function fetchOsrmPoints(profile, from, to) {
+  const url = `https://router.project-osrm.org/route/v1/${profile}/` +
+    `${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (data.code !== 'Ok') throw new Error(data.message);
+  return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+}
+
+async function resolvePoints(route) {
+  const from = locations[route.fromIdx];
+  const to   = locations[route.toIdx];
+  const { routing } = ROUTE_META[route.type];
+
+  if (routing === 'greatcircle') return greatCirclePoints(from.lat, from.lng, to.lat, to.lng);
+
+  if (routing.startsWith('osrm-')) {
+    try {
+      return await fetchOsrmPoints(routing.replace('osrm-', ''), from, to);
+    } catch {
+      toast('Routing unavailable — drawing straight line.');
+      return [[from.lat, from.lng], [to.lat, to.lng]];
+    }
+  }
+  return [[from.lat, from.lng], [to.lat, to.lng]];
+}
+
+// ── Polyline styling ──────────────────────────────────────────────────────────
+function polylineOpts(route) {
+  const meta = ROUTE_META[route.type];
+  const color =
+    route.colorMode === 'none'   ? '#888' :
+    route.colorMode === 'custom' ? route.customColor :
+    meta.color;
+
+  const dashArray =
+    route.style === 'solid'  ? null   :
+    route.style === 'dashed' ? '8 6'  :
+    route.style === 'dotted' ? '2 6'  :
+    meta.dashArray;
+
+  return { color, dashArray, weight: meta.weight, opacity: 0.85 };
+}
+
+// ── Render: draw one route on map ─────────────────────────────────────────────
+async function drawRoute(idx) {
+  const route  = routes[idx];
+  const points = await resolvePoints(route);
+  const opts   = polylineOpts(route);
+  const layer  = L.polyline(points, opts).addTo(map);
+
+  const from = locations[route.fromIdx];
+  const to   = locations[route.toIdx];
+  layer.bindPopup(
+    `<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>` +
+    `${from.name} → ${to.name}` +
+    (route.label ? `<br/><em>${route.label}</em>` : '')
+  );
+
+  while (routeLayers.length <= idx) routeLayers.push(null);
+  if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
+  routeLayers[idx] = layer;
+}
+
+function clearRouteLayer(idx) {
+  if (routeLayers[idx]) { map.removeLayer(routeLayers[idx]); routeLayers[idx] = null; }
+}
+
+// ── Render: location marker ───────────────────────────────────────────────────
+function addLocMarker(loc) {
+  const icon   = L.divIcon({ className: 'marker-label', html: loc.name, iconAnchor: [-6, 12] });
+  const marker = L.marker([loc.lat, loc.lng]).addTo(map).bindPopup(
+    `<b>${loc.name}</b><br/><small>${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</small>` +
+    (loc.note ? `<br/><em>${loc.note}</em>` : '')
+  );
+  const labelMkr = L.marker([loc.lat, loc.lng], { icon, interactive: false }).addTo(map);
+  locMarkers.push({ marker, labelMkr });
+}
+
+function clearLocMarkers() {
+  locMarkers.forEach(({ marker, labelMkr }) => { map.removeLayer(marker); map.removeLayer(labelMkr); });
+  locMarkers = [];
+}
+
+// ── Render: sidebar lists ─────────────────────────────────────────────────────
+function renderLocList() {
+  const el = document.getElementById('loc-list');
+  el.innerHTML = '';
+  if (!locations.length) {
+    el.innerHTML = '<div style="color:var(--fg2);font-size:12px;text-align:center;padding:16px;">No locations yet.</div>';
+    return;
+  }
+  locations.forEach((loc, i) => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.innerHTML =
+      `<div class="item-body">
+         <div class="item-name">${loc.name}</div>
+         <div class="item-sub">${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}</div>
+       </div>
+       <button class="btn-sm fly" title="Fly to">⌖</button>
+       <button class="btn-sm del" title="Delete">✕</button>`;
+    item.querySelector('.fly').addEventListener('click', () => map.flyTo([loc.lat, loc.lng], 10));
+    item.querySelector('.del').addEventListener('click', () => deleteLocation(i));
+    el.appendChild(item);
+  });
+}
+
+function renderRouteList() {
+  const el = document.getElementById('route-list');
+  el.innerHTML = '';
+  if (!routes.length) {
+    el.innerHTML = '<div style="color:var(--fg2);font-size:12px;text-align:center;padding:16px;">No routes yet.</div>';
+    return;
+  }
+  routes.forEach((r, i) => {
+    const from = locations[r.fromIdx];
+    const to   = locations[r.toIdx];
+    if (!from || !to) return;
+    const opts = polylineOpts(r);
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.innerHTML =
+      `<span style="font-size:15px;">${TYPE_EMOJI[r.type]}</span>
+       <div class="route-swatch" style="background:${opts.color};${opts.dashArray ? `background:repeating-linear-gradient(90deg,${opts.color} 0,${opts.color} 6px,transparent 6px,transparent 10px)` : ''}"></div>
+       <div class="item-body">
+         <div class="item-name">${from.name} → ${to.name}</div>
+         <div class="item-sub">${r.type}${r.label ? ' · ' + r.label : ''}</div>
+       </div>
+       <button class="btn-sm del" title="Delete">✕</button>`;
+    item.querySelector('.del').addEventListener('click', () => deleteRoute(i));
+    el.appendChild(item);
+  });
+}
+
+function refreshRouteSelects() {
+  ['route-from', 'route-to'].forEach(id => {
+    const sel  = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = locations.map((l, i) => `<option value="${i}">${l.name}</option>`).join('');
+    if (prev !== '') sel.value = prev;
+  });
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+function deleteLocation(idx) {
+  if (routes.some(r => r.fromIdx === idx || r.toIdx === idx) &&
+      !confirm('This location is used by a route. Delete anyway?')) return;
+
+  clearLocMarkers();
+  locations.splice(idx, 1);
+  routes = routes.filter(r => r.fromIdx !== idx && r.toIdx !== idx);
+  routes.forEach(r => {
+    if (r.fromIdx > idx) r.fromIdx--;
+    if (r.toIdx   > idx) r.toIdx--;
+  });
+  routeLayers = [];
+  locations.forEach(addLocMarker);
+  routes.forEach((_, i) => drawRoute(i));
+  renderLocList(); renderRouteList(); refreshRouteSelects(); save();
+}
+
+function deleteRoute(idx) {
+  clearRouteLayer(idx);
+  routeLayers.splice(idx, 1);
+  routes.splice(idx, 1);
+  renderRouteList(); save();
+}
+
+// ── Fit ───────────────────────────────────────────────────────────────────────
+function fitAll() {
+  if (!locations.length) return;
+  map.fitBounds(L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.15));
+}
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+function save() {
+  localStorage.setItem('trip-mapper-v2', JSON.stringify({ locations, routes }));
+}
+function load() {
+  try {
+    const raw = localStorage.getItem('trip-mapper-v2');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    locations = d.locations || [];
+    routes    = d.routes    || [];
+  } catch {}
+}
+
+// ── Full rebuild ──────────────────────────────────────────────────────────────
+async function rebuildAll() {
+  clearLocMarkers();
+  routeLayers.forEach((_, i) => clearRouteLayer(i));
+  routeLayers = [];
+  locations.forEach(addLocMarker);
+  for (let i = 0; i < routes.length; i++) await drawRoute(i);
+  renderLocList(); renderRouteList(); refreshRouteSelects();
+}
+
+// ── Map click ─────────────────────────────────────────────────────────────────
+map.on('click', e => {
+  document.getElementById('loc-lat').value = e.latlng.lat.toFixed(6);
+  document.getElementById('loc-lng').value = e.latlng.lng.toFixed(6);
+  activateTab('locations');
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function activateTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
+}
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+document.getElementById('theme-select').addEventListener('change', e => {
+  setTheme(e.target.value);
+  localStorage.setItem('trip-mapper-theme', e.target.value);
+});
+
+// ── Color mode toggle ─────────────────────────────────────────────────────────
+document.getElementById('route-color-mode').addEventListener('change', e => {
+  document.getElementById('route-color-pick').style.display =
+    e.target.value === 'custom' ? 'inline-block' : 'none';
+});
+
+// ── Add location ──────────────────────────────────────────────────────────────
+document.getElementById('btn-add-loc').addEventListener('click', () => {
+  const name = document.getElementById('loc-name').value.trim();
+  const lat  = parseFloat(document.getElementById('loc-lat').value);
+  const lng  = parseFloat(document.getElementById('loc-lng').value);
+  const note = document.getElementById('loc-note').value.trim();
+
+  if (!name)                    return alert('Enter a location name.');
+  if (isNaN(lat) || isNaN(lng)) return alert('Enter valid coordinates.');
+
+  const loc = { name, lat, lng, note };
+  locations.push(loc);
+  addLocMarker(loc);
+  fitAll();
+  renderLocList();
+  refreshRouteSelects();
+  save();
+  toast(`Added "${name}"`);
+
+  ['loc-name','loc-lat','loc-lng','loc-note'].forEach(id => document.getElementById(id).value = '');
+});
+
+// ── Add route ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-add-route').addEventListener('click', async () => {
+  if (locations.length < 2) return alert('Add at least 2 locations first.');
+
+  const fromIdx     = parseInt(document.getElementById('route-from').value);
+  const toIdx       = parseInt(document.getElementById('route-to').value);
+  const type        = document.getElementById('route-type').value;
+  const colorMode   = document.getElementById('route-color-mode').value;
+  const customColor = document.getElementById('route-color-pick').value;
+  const style       = document.getElementById('route-style').value;
+  const label       = document.getElementById('route-label').value.trim();
+
+  if (fromIdx === toIdx) return alert('From and To must be different locations.');
+
+  const route = { fromIdx, toIdx, type, colorMode, customColor, style, label };
+  const idx   = routes.length;
+  routes.push(route);
+
+  const btn = document.getElementById('btn-add-route');
+  btn.textContent = 'Routing…'; btn.disabled = true;
+  await drawRoute(idx);
+  btn.textContent = 'Add Route'; btn.disabled = false;
+
+  renderRouteList();
+  save();
+  toast(`Added ${type} route: ${locations[fromIdx].name} → ${locations[toIdx].name}`);
+  document.getElementById('route-label').value = '';
+});
+
+// ── Export ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ locations, routes }, null, 2)], { type: 'application/json' });
+  Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'trip-mapper.json' }).click();
+});
+
+// ── Import ────────────────────────────────────────────────────────────────────
+document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      locations = Array.isArray(d) ? d : (d.locations || []);
+      routes    = d.routes || [];
+      await rebuildAll(); fitAll(); save();
+      toast('Imported successfully.');
+    } catch { alert('Invalid JSON file.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ── Clear all ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-clear').addEventListener('click', () => {
+  if (!confirm('Delete all locations and routes?')) return;
+  clearLocMarkers();
+  routeLayers.forEach((_, i) => clearRouteLayer(i));
+  locations = []; routes = []; routeLayers = [];
+  renderLocList(); renderRouteList(); refreshRouteSelects(); save();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+const savedTheme = localStorage.getItem('trip-mapper-theme') || 'voyager';
+document.getElementById('theme-select').value = savedTheme;
+setTheme(savedTheme);
+
+load();
+rebuildAll().then(fitAll);
+</script>
+</body>
+</html>
