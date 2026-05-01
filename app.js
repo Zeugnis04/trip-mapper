@@ -29,6 +29,14 @@ const PALETTES = {
   Pastel: ['#ffadad','#ffd6a5','#fdffb6','#caffbf','#9bf6ff','#a0c4ff','#bdb2ff'],
   Earth:  ['#7c4a1e','#c07941','#d4a030','#557a55','#4e7c8c','#6d6a75','#8b5e52'],
   Ocean:  ['#03045e','#0077b6','#0096c7','#00b4d8','#48cae4','#90e0ef','#ade8f4'],
+  Sunset: ['#2b2d42','#8d99ae','#ef233c','#f77f00','#fcbf49','#eae2b7'],
+  Forest: ['#132a13','#31572c','#4f772d','#90a955','#ecf39e','#a7c957'],
+  Desert: ['#5f0f40','#9a031e','#fb8b24','#e36414','#0f4c5c','#f2cc8f'],
+  Candy:  ['#ff70a6','#ff9770','#ffd670','#e9ff70','#70d6ff','#c77dff'],
+  Jewel:  ['#0b132b','#1c2541','#3a506b','#5bc0be','#ffd166','#ef476f'],
+  Metro:  ['#003f5c','#58508d','#bc5090','#ff6361','#ffa600','#2f4b7c'],
+  ColorBrewer: ['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02','#a6761d'],
+  Tableau: ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1'],
   Mono:   ['#f0f0f0','#c0c0c0','#909090','#606060','#404040','#202020','#888888'],
 };
 const NEUTRAL_COLOR = '#888888';
@@ -36,15 +44,20 @@ const NEUTRAL_COLOR = '#888888';
 // ── Font options ──────────────────────────────────────────────────────────────
 const FONTS = [
   { name: 'Noto Sans KR',    stack: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",var(--emoji-font-family),system-ui,sans-serif', gf: 'Noto+Sans+KR:wght@400;500;700;800' },
+  { name: 'Adobe Caslon',    stack: 'adobe-caslon-pro,"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),Georgia,"Times New Roman",serif', gf: null },
+  { name: 'Noto Serif CJK',  stack: '"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),serif',                   gf: 'Noto+Serif+KR:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700' },
+  { name: 'Noto Serif KR',   stack: '"Noto Serif KR",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+KR:wght@400;500;600;700' },
+  { name: 'Noto Serif SC',   stack: '"Noto Serif SC",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+SC:wght@400;500;600;700' },
+  { name: 'Noto Serif TC',   stack: '"Noto Serif TC",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+TC:wght@400;500;600;700' },
   { name: 'JetBrains Mono',  stack: '"JetBrains Mono","Noto Sans KR",var(--emoji-font-family),"Fira Code",Consolas,monospace',             gf: 'JetBrains+Mono:wght@400;600;700;800' },
   { name: 'System Sans',     stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",var(--emoji-font-family),sans-serif', gf: null },
-  { name: 'Serif',           stack: 'Georgia,"Times New Roman","Noto Serif KR",var(--emoji-font-family),serif',                            gf: null },
+  { name: 'Serif',           stack: 'Georgia,"Times New Roman","Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),serif', gf: null },
   { name: 'Monospace',       stack: 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans KR",var(--emoji-font-family),monospace',        gf: null },
   { name: 'Inter',           stack: '"Inter","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                                gf: 'Inter:wght@400;600;700' },
   { name: 'Roboto',          stack: '"Roboto","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                               gf: 'Roboto:wght@400;700' },
   { name: 'Nunito',          stack: '"Nunito","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                               gf: 'Nunito:wght@400;600;700' },
-  { name: 'Merriweather',    stack: '"Merriweather","Noto Serif KR",var(--emoji-font-family),Georgia,"Times New Roman",serif',            gf: 'Merriweather:wght@400;700' },
-  { name: 'Playfair',        stack: '"Playfair Display","Noto Serif KR",var(--emoji-font-family),Georgia,"Times New Roman",serif',         gf: 'Playfair+Display:wght@400;700' },
+  { name: 'Merriweather',    stack: '"Merriweather","Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),Georgia,"Times New Roman",serif', gf: 'Merriweather:wght@400;700' },
+  { name: 'Playfair',        stack: '"Playfair Display","Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),Georgia,"Times New Roman",serif', gf: 'Playfair+Display:wght@400;700' },
 ];
 
 // ── Location shapes ───────────────────────────────────────────────────────────
@@ -67,6 +80,8 @@ let expandedPalette  = null;  // which palette accordion is open in style panel
 let expandedLocIdx   = null;  // which location's edit panel is open
 let paletteApplyMode = 'same'; // 'same' | 'sequential' | 'bytype'
 let markerPaletteApplyMode = 'all'; // 'all' | 'sequential'
+const paletteOrder = {};
+const panelScrollPositions = {};
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_EMBED = URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('embed') === 'true';
 
@@ -133,6 +148,43 @@ function greatCirclePoints(lat1, lng1, lat2, lng2, n = 80) {
   }
   return pts;
 }
+
+function curvedPoints(from, to, n = 64) {
+  const crs = map.options.crs || L.CRS.EPSG3857;
+  const zoom = 6;
+  const p1 = crs.latLngToPoint(L.latLng(from.lat, from.lng), zoom);
+  const p2 = crs.latLngToPoint(L.latLng(to.lat, to.lng), zoom);
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist === 0) return [[from.lat, from.lng]];
+  const bend = Math.min(Math.max(dist * 0.12, 18), 90);
+  const normal = L.point(-dy / dist, dx / dist);
+  const c1 = L.point(
+    p1.x + dx * 0.32 + normal.x * bend,
+    p1.y + dy * 0.32 + normal.y * bend
+  );
+  const c2 = L.point(
+    p1.x + dx * 0.68 + normal.x * bend,
+    p1.y + dy * 0.68 + normal.y * bend
+  );
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const mt = 1 - t;
+    const a = mt * mt * mt;
+    const b = 3 * mt * mt * t;
+    const c = 3 * mt * t * t;
+    const d = t * t * t;
+    const p = L.point(
+      a * p1.x + b * c1.x + c * c2.x + d * p2.x,
+      a * p1.y + b * c1.y + c * c2.y + d * p2.y
+    );
+    const ll = crs.pointToLatLng(p, zoom);
+    pts.push([ll.lat, ll.lng]);
+  }
+  return pts;
+}
+
 async function fetchOsrmPoints(profile, from, to) {
   const res  = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`);
   const data = await res.json();
@@ -141,6 +193,8 @@ async function fetchOsrmPoints(profile, from, to) {
 }
 async function resolvePoints(route) {
   const from = locations[route.fromIdx], to = locations[route.toIdx];
+  if (!from || !to) return [];
+  if (route.shape === 'curve') return curvedPoints(from, to);
   const { routing } = ROUTE_META[route.type];
   if (routing === 'greatcircle') return greatCirclePoints(from.lat, from.lng, to.lat, to.lng);
   if (routing.startsWith('osrm-')) {
@@ -166,8 +220,11 @@ function polylineOpts(route) {
 // ── Draw / clear routes ───────────────────────────────────────────────────────
 async function drawRoute(idx) {
   const route = routes[idx]; if (!route) return;
-  const layer = L.polyline(await resolvePoints(route), polylineOpts(route)).addTo(map);
   const from = locations[route.fromIdx], to = locations[route.toIdx];
+  if (!from || !to) return;
+  const points = await resolvePoints(route);
+  if (!points.length) return;
+  const layer = L.polyline(points, polylineOpts(route)).addTo(map);
   layer.bindPopup(`<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>${from.name} → ${to.name}`);
   while (routeLayers.length <= idx) routeLayers.push(null);
   if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
@@ -190,10 +247,12 @@ function normalizeLoc(l) {
     labelPos:         l.labelPos         || 'right',
     labelRound:       l.labelRound       ?? 4,
     labelSize:        l.labelSize        ?? 11,
+    labelNumberSize:  l.labelNumberSize  ?? 85,
+    labelTextAlign:   l.labelTextAlign   || 'center',
     labelTextColor:   l.labelTextColor   || '#18181b',
     labelNumberColor: l.labelNumberColor || l.labelTextColor || '#18181b',
-    labelBg:          l.labelBg          || '#ffffff',
-    labelBorderColor: l.labelBorderColor || null,
+    labelBg:          l.labelBg          ?? '#ffffff',
+    labelBorderColor: l.labelBorderColor ?? null,
     labelArrow:       l.labelArrow       ?? false,
     labelOffsetX:     l.labelOffsetX     ?? 0,
     labelOffsetY:     l.labelOffsetY     ?? 0,
@@ -206,8 +265,8 @@ function normalizeLoc(l) {
 }
 
 const LABEL_STYLE_KEYS = [
-  'labelMode','labelPos','labelRound','labelSize','labelTextColor','labelNumberColor',
-  'labelBg','labelBorderColor','labelArrow','labelOffsetX','labelOffsetY','labelWidth',
+  'labelMode','labelPos','labelRound','labelSize','labelNumberSize','labelTextColor','labelNumberColor',
+  'labelTextAlign','labelBg','labelBorderColor','labelArrow','labelOffsetX','labelOffsetY','labelWidth',
   'labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
 ];
 
@@ -229,7 +288,8 @@ function labelTooltipHtml(loc) {
   const parts = [];
   if ((loc.labelShowNumber ?? false) && loc.visitNumber != null) {
     const color = escapeHtml(loc.labelNumberColor || loc.labelTextColor || '#18181b');
-    parts.push(`<div class="loc-label-number" style="color:${color};">${escapeHtml(loc.visitNumber)}</div>`);
+    const size = Number.isFinite(loc.labelNumberSize) ? loc.labelNumberSize : 85;
+    parts.push(`<div class="loc-label-number" style="color:${color};font-size:${size}%;"><span>${escapeHtml(loc.visitNumber)}</span></div>`);
   }
   if (loc.labelShowName ?? true) parts.push(`<div class="loc-label-name">${escapeHtml(loc.name)}</div>`);
   if ((loc.labelShowDate ?? false) && loc.date) parts.push(`<div class="loc-label-date">${escapeHtml(loc.date)}</div>`);
@@ -240,7 +300,7 @@ function labelTooltipHtml(loc) {
   return `<div class="loc-label-content">${content}</div>`;
 }
 
-function markerIconHtml(loc) {
+function markerIconHtml(loc, { hidden = false } = {}) {
   const color = loc.markerColor || '#89b4fa';
   const shapeKey = loc.shape || 'circle';
   const shape = LOC_SHAPES[shapeKey];
@@ -248,8 +308,9 @@ function markerIconHtml(loc) {
   const numberColor = loc.markerNumberColor || '#18181b';
   const size = loc.markerSize ?? 18;
   const fontSize = Math.max(8, Math.round(size * 0.5));
+  const hiddenStyle = hidden ? 'opacity:0;pointer-events:none;' : '';
   const numberStyle = shapeKey === 'diamond' ? ' style="transform:rotate(-45deg);"' : '';
-  return `<div class="map-marker-shape" style="width:${size}px;height:${size}px;font-size:${fontSize}px;background:${color};color:${numberColor};${shape.css}"><span${numberStyle}>${number}</span></div>`;
+  return `<div class="map-marker-shape" style="width:${size}px;height:${size}px;font-size:${fontSize}px;background:${color};color:${numberColor};${hiddenStyle}${shape.css}"><span${numberStyle}>${number}</span></div>`;
 }
 
 function locKey(loc) {
@@ -276,9 +337,11 @@ function buildTooltipStyles() {
   locations.forEach((loc, i) => {
     const mode = loc.labelMode || 'always';
     if (mode === 'hidden') return;
-    const bg     = loc.labelBg          || '#ffffff';
+    const bg     = loc.labelBg          ?? '#ffffff';
     const text   = loc.labelTextColor   || '#18181b';
     const border = loc.labelBorderColor || loc.markerColor || '#89b4fa';
+    const transparentChrome = bg === 'transparent' || border === 'transparent';
+    const align  = loc.labelTextAlign   || 'center';
     const round  = loc.labelRound       ?? 4;
     const size   = loc.labelSize        ?? 11;
     const arrow  = loc.labelArrow       ?? false;
@@ -287,9 +350,11 @@ function buildTooltipStyles() {
          + `background:${bg}!important;color:${text}!important;`
          + `border-color:${border}!important;border-radius:${round}px!important;`
          + `font-size:${size}px!important;`
+         + `text-align:${align}!important;`
+         + (transparentChrome ? 'box-shadow:none!important;text-shadow:none!important;' : '')
          + (drag ? 'pointer-events:auto!important;cursor:grab;' : 'pointer-events:none!important;')
          + `}\n`;
-    if (!arrow) {
+    if (!arrow || border === 'transparent') {
       css += `.loc-tt-${i}::before{display:none!important;}\n`;
     } else {
       css += `.leaflet-tooltip-right.loc-tt-${i}::before{border-right-color:${border}!important;}\n`;
@@ -320,23 +385,38 @@ function setTooltipOffset(marker, loc) {
 
 function updateTooltipLayout(marker, loc) {
   const tooltip = marker?.getTooltip?.();
+  if (!tooltip || !loc) return;
+  tooltip.options.offset = L.point(loc.labelOffsetX ?? 0, loc.labelOffsetY ?? 0);
   const el = tooltip?.getElement?.();
   applyTooltipLayoutStyle(el, loc);
-  tooltip?.update();
+  tooltip.update();
 }
 
 function applyAllTooltipLayoutStyles() {
-  locations.forEach((loc, i) => {
-    document.querySelectorAll(`.loc-label-tt[data-loc-idx="${i}"]`).forEach(tt => applyTooltipLayoutStyle(tt, loc));
-  });
+  locMarkers.forEach((entry, i) => updateTooltipLayout(entry?.marker, locations[i]));
+}
+
+function getLabelScreenRect(locIdx) {
+  return locMarkers[locIdx]?.marker?.getTooltip?.()?.getElement?.()?.getBoundingClientRect?.() || null;
+}
+
+function preserveLabelScreenPosition(locIdx, updateFn) {
+  const before = getLabelScreenRect(locIdx);
+  updateFn();
+  const after = getLabelScreenRect(locIdx);
+  const loc = locations[locIdx];
+  if (!before || !after || !loc || (loc.labelMode || 'always') !== 'always') return;
+  loc.labelOffsetX = (loc.labelOffsetX ?? 0) + Math.round(before.left - after.left);
+  loc.labelOffsetY = (loc.labelOffsetY ?? 0) + Math.round(before.top - after.top);
+  updateTooltipLayout(locMarkers[locIdx]?.marker, loc);
 }
 
 function addLocMarker(loc, locIdx) {
-  if (locations.findIndex(l => locKey(l) === locKey(loc)) !== locIdx) return;
+  const duplicateLoc = locations.findIndex(l => locKey(l) === locKey(loc)) !== locIdx;
   loc = { ...loc, visitNumber: locIdx + 1 };
   const icon = L.divIcon({
     className: `loc-mk-${locIdx}`,
-    html: markerIconHtml(loc),
+    html: markerIconHtml(loc, { hidden: duplicateLoc }),
     iconAnchor: [(loc.markerSize ?? 18) / 2, (loc.markerSize ?? 18) / 2],
     iconSize: [loc.markerSize ?? 18, loc.markerSize ?? 18],
   });
@@ -385,6 +465,7 @@ function rebuildMarkers() {
   clearLocMarkers();
   buildTooltipStyles();
   locations.forEach(addLocMarker);
+  applyAllTooltipLayoutStyles();
 }
 
 // ── Label drag ────────────────────────────────────────────────────────────────
@@ -503,6 +584,41 @@ async function rebuildAllRoutes() {
 // ── Style panel ───────────────────────────────────────────────────────────────
 const SOLID_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e8c','#ffffff','#888888','#000000'];
 
+function orderedPaletteColors(scope, name, colors) {
+  const state = paletteOrder[`${scope}:${name}`] || { shift: 0, reversed: false };
+  let ordered = [...colors];
+  if (state.reversed) ordered.reverse();
+  const shift = ((state.shift % ordered.length) + ordered.length) % ordered.length;
+  return ordered.slice(shift).concat(ordered.slice(0, shift));
+}
+
+function paletteOrderSettings() {
+  return Object.fromEntries(Object.entries(paletteOrder).map(([key, state]) => [
+    key,
+    { shift: Number(state.shift) || 0, reversed: !!state.reversed },
+  ]));
+}
+
+function applyPaletteOrderSettings(value = {}) {
+  Object.keys(paletteOrder).forEach(key => { delete paletteOrder[key]; });
+  Object.entries(value || {}).forEach(([key, state]) => {
+    if (!state || typeof state !== 'object') return;
+    paletteOrder[key] = { shift: Number(state.shift) || 0, reversed: !!state.reversed };
+  });
+}
+
+function adjustPaletteOrder(scope, name, action) {
+  const key = `${scope}:${name}`;
+  const colors = PALETTES[name];
+  if (!colors) return;
+  const state = paletteOrder[key] || { shift: 0, reversed: false };
+  if (action === 'reverse') state.reversed = !state.reversed;
+  if (action === 'left') state.shift = (state.shift + 1) % colors.length;
+  if (action === 'right') state.shift = (state.shift - 1 + colors.length) % colors.length;
+  paletteOrder[key] = state;
+  save();
+}
+
 function makeStylePanel(routeIdx, route) {
   const panel = document.createElement('div');
   panel.className = 'style-panel';
@@ -554,7 +670,8 @@ function makeStylePanel(routeIdx, route) {
 
   // — Palette accordion: pick individual colors or apply whole palette to all —
   const paletteSection = document.createElement('div');
-  paletteSection.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  paletteSection.className = 'palette-section';
+  paletteSection.dataset.scrollKey = `route:${routeIdx}`;
 
   // Mode toggle row
   const palModeRow = document.createElement('div'); palModeRow.className = 'pal-mode-row';
@@ -578,14 +695,15 @@ function makeStylePanel(routeIdx, route) {
 
   Object.entries(PALETTES).forEach(([name, colors]) => {
     const entry = document.createElement('div'); entry.className = 'palette-entry';
+    const orderedColors = colors ? orderedPaletteColors('route', name, colors) : null;
 
     // Header row: color strip + name + toggle arrow
     const header = document.createElement('div');
     header.className = 'palette-header' + (expandedPalette === name ? ' open' : '');
 
-    if (colors) {
+    if (orderedColors) {
       const strip = document.createElement('div'); strip.className = 'palette-strip';
-      colors.forEach(c => { const s = document.createElement('span'); s.style.background = c; strip.appendChild(s); });
+      orderedColors.forEach(c => { const s = document.createElement('span'); s.style.background = c; strip.appendChild(s); });
       header.appendChild(strip);
     }
     const nameLbl = document.createElement('span'); nameLbl.className = 'palette-name'; nameLbl.textContent = name;
@@ -604,9 +722,9 @@ function makeStylePanel(routeIdx, route) {
     const body = document.createElement('div');
     body.className = 'palette-body' + (expandedPalette === name ? ' open' : '');
 
-    if (colors) {
+    if (orderedColors) {
       const swatchRow = document.createElement('div'); swatchRow.className = 'palette-swatches';
-      colors.forEach(hex => {
+      orderedColors.forEach(hex => {
         const sw = document.createElement('div');
         sw.className = 'swatch' + (route.color === hex ? ' active' : '');
         sw.style.cssText = `background:${hex};width:20px;height:20px;`;
@@ -615,14 +733,29 @@ function makeStylePanel(routeIdx, route) {
         swatchRow.appendChild(sw);
       });
       body.appendChild(swatchRow);
+
+      const orderRow = document.createElement('div');
+      orderRow.className = 'palette-order-row';
+      [
+        ['left', '↶ Rotate'],
+        ['right', 'Rotate ↷'],
+        ['reverse', 'Reverse'],
+      ].forEach(([action, label]) => {
+        const btn = document.createElement('button');
+        btn.className = 'sp-btn';
+        btn.textContent = label;
+        btn.addEventListener('click', () => { adjustPaletteOrder('route', name, action); renderLocList(); });
+        orderRow.appendChild(btn);
+      });
+      body.appendChild(orderRow);
     }
 
     const applyAllBtn = document.createElement('button');
     applyAllBtn.className = 'palette-apply';
-    applyAllBtn.textContent = !colors ? 'Reset all to type default' :
+    applyAllBtn.textContent = !orderedColors ? 'Reset all to type default' :
       paletteApplyMode === 'same' ? 'Apply selected color to all segments' : 'Apply to all segments';
     applyAllBtn.addEventListener('click', async () => {
-      if (!colors) {
+      if (!orderedColors) {
         routes.forEach(r => { r.color = null; });
       } else if (paletteApplyMode === 'same') {
         const color = currentRouteColor();
@@ -630,10 +763,10 @@ function makeStylePanel(routeIdx, route) {
       } else if (paletteApplyMode === 'bytype') {
         routes.forEach(r => {
           const ti = typeKeys.indexOf(r.type);
-          r.color = colors[(ti >= 0 ? ti : 0) % colors.length];
+          r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length];
         });
       } else {
-        routes.forEach((r, i) => { r.color = colors[i % colors.length]; });
+        routes.forEach((r, i) => { r.color = orderedColors[i % orderedColors.length]; });
       }
       rebuildMarkers();
       await rebuildAllRoutes();
@@ -673,6 +806,31 @@ function makeStylePanel(routeIdx, route) {
   });
   dashRow.appendChild(dashAllBtn);
   panel.appendChild(dashRow);
+
+  // — Geometry row —
+  const shapeRow = document.createElement('div');
+  shapeRow.className = 'sp-row';
+  shapeRow.innerHTML = '<span class="sp-label">Line</span>';
+  [
+    { key: 'route', label: 'Route' },
+    { key: 'curve', label: 'Curve' },
+  ].forEach(({ key, label }) => {
+    const btn = document.createElement('button');
+    btn.className = 'sp-btn' + ((route.shape || 'route') === key ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', async () => { routes[routeIdx].shape = key; await redrawRoute(routeIdx); });
+    shapeRow.appendChild(btn);
+  });
+  const shapeAllBtn = document.createElement('button');
+  shapeAllBtn.className = 'sp-all'; shapeAllBtn.textContent = '↓ All';
+  shapeAllBtn.title = 'Apply this line shape to all segments';
+  shapeAllBtn.addEventListener('click', async () => {
+    const shape = route.shape || 'route';
+    routes.forEach(r => { r.shape = shape; });
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  shapeRow.appendChild(shapeAllBtn);
+  panel.appendChild(shapeRow);
 
   // — Width slider (1–10, null = auto = type default) —
   const widthRow = document.createElement('div');
@@ -753,6 +911,7 @@ function applyMarkerPalette(colors, selectedColor = colors[0]) {
 function makeMarkerPaletteControls(locIdx, loc) {
   const section = document.createElement('div');
   section.className = 'palette-section';
+  section.dataset.scrollKey = `marker:${locIdx}`;
 
   const modeRow = document.createElement('div');
   modeRow.className = 'pal-mode-row';
@@ -779,6 +938,7 @@ function makeMarkerPaletteControls(locIdx, loc) {
 
   Object.entries(PALETTES).forEach(([name, colors]) => {
     if (!colors) return;
+    const orderedColors = orderedPaletteColors('marker', name, colors);
 
     const entry = document.createElement('div');
     entry.className = 'palette-entry';
@@ -788,7 +948,7 @@ function makeMarkerPaletteControls(locIdx, loc) {
 
     const strip = document.createElement('div');
     strip.className = 'palette-strip';
-    colors.forEach(c => {
+    orderedColors.forEach(c => {
       const s = document.createElement('span');
       s.style.background = c;
       strip.appendChild(s);
@@ -816,7 +976,7 @@ function makeMarkerPaletteControls(locIdx, loc) {
 
     const swatchRow = document.createElement('div');
     swatchRow.className = 'palette-swatches';
-    colors.forEach(hex => {
+    orderedColors.forEach(hex => {
       const sw = document.createElement('div');
       sw.className = 'swatch' + (loc.markerColor === hex ? ' active' : '');
       sw.style.cssText = `background:${hex};width:20px;height:20px;`;
@@ -829,15 +989,30 @@ function makeMarkerPaletteControls(locIdx, loc) {
     });
     body.appendChild(swatchRow);
 
-    const selectedPaletteColor = () => colors.includes(locations[locIdx].markerColor)
+    const orderRow = document.createElement('div');
+    orderRow.className = 'palette-order-row';
+    [
+      ['left', '↶ Rotate'],
+      ['right', 'Rotate ↷'],
+      ['reverse', 'Reverse'],
+    ].forEach(([action, label]) => {
+      const btn = document.createElement('button');
+      btn.className = 'sp-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', () => { adjustPaletteOrder('marker', name, action); renderLocList(); });
+      orderRow.appendChild(btn);
+    });
+    body.appendChild(orderRow);
+
+    const selectedPaletteColor = () => orderedColors.includes(locations[locIdx].markerColor)
       ? locations[locIdx].markerColor
-      : colors[0];
+      : orderedColors[0];
     const applyBtn = document.createElement('button');
     applyBtn.className = 'palette-apply';
     applyBtn.textContent = markerPaletteApplyMode === 'sequential'
       ? 'Apply sequentially by visit order'
       : 'Apply selected color to all stops';
-    applyBtn.addEventListener('click', () => applyMarkerPalette(colors, selectedPaletteColor()));
+    applyBtn.addEventListener('click', () => applyMarkerPalette(orderedColors, selectedPaletteColor()));
     body.appendChild(applyBtn);
 
     entry.appendChild(body);
@@ -872,7 +1047,13 @@ function makeLocEditPanel(locIdx) {
   const notesInput = document.createElement('textarea');
   notesInput.className = 'lep-input'; notesInput.value = loc.description || '';
   notesInput.placeholder = 'Add notes…';
-  notesInput.addEventListener('change', () => { locations[locIdx].description = notesInput.value; save(); });
+  notesInput.addEventListener('change', () => {
+    preserveLabelScreenPosition(locIdx, () => {
+      locations[locIdx].description = notesInput.value;
+      rebuildMarkers();
+    });
+    renderLocList(); save();
+  });
   notesRow.appendChild(notesInput); panel.appendChild(notesRow);
 
   // Date
@@ -880,7 +1061,13 @@ function makeLocEditPanel(locIdx) {
   dateRow.innerHTML = '<span class="lep-label">Date</span>';
   const dateInput = document.createElement('input');
   dateInput.type = 'date'; dateInput.className = 'lep-input'; dateInput.value = loc.date || '';
-  dateInput.addEventListener('change', () => { locations[locIdx].date = dateInput.value; renderLocList(); save(); });
+  dateInput.addEventListener('change', () => {
+    preserveLabelScreenPosition(locIdx, () => {
+      locations[locIdx].date = dateInput.value;
+      rebuildMarkers();
+    });
+    renderLocList(); save();
+  });
   dateRow.appendChild(dateInput); panel.appendChild(dateRow);
 
   // Coordinates
@@ -1064,13 +1251,19 @@ function makeLocEditPanel(locIdx) {
     const btn = document.createElement('button');
     btn.className = 'shape-btn label-mode-btn' + ((loc.labelMode||'always')===m?' active':'');
     btn.textContent = txt;
-    btn.addEventListener('click', () => { locations[locIdx].labelMode = m; rebuildMarkers(); renderLocList(); save(); });
+    btn.addEventListener('click', () => {
+      preserveLabelScreenPosition(locIdx, () => {
+        locations[locIdx].labelMode = m;
+        rebuildMarkers();
+      });
+      renderLocList(); save();
+    });
     lblModeRow.appendChild(btn);
   });
   panel.appendChild(lblModeRow);
 
   // Content
-  const lblContentRow = document.createElement('div'); lblContentRow.className = 'lep-row';
+  const lblContentRow = document.createElement('div'); lblContentRow.className = 'lep-row label-content-row';
   lblContentRow.innerHTML = '<span class="lep-label">Content</span>';
   [
     ['labelShowNumber', 'Number'],
@@ -1083,8 +1276,11 @@ function makeLocEditPanel(locIdx) {
     btn.className = 'sp-btn label-content-btn' + (active ? ' active' : '');
     btn.textContent = txt;
     btn.addEventListener('click', () => {
-      locations[locIdx][key] = !active;
-      rebuildMarkers(); renderLocList(); save();
+      preserveLabelScreenPosition(locIdx, () => {
+        locations[locIdx][key] = !active;
+        rebuildMarkers();
+      });
+      renderLocList(); save();
     });
     lblContentRow.appendChild(btn);
   });
@@ -1148,24 +1344,96 @@ function makeLocEditPanel(locIdx) {
   const sizeVal = document.createElement('span'); sizeVal.className = 'sp-slider-val';
   sizeVal.textContent = `${loc.labelSize ?? 11}px`;
   sizeSlider.addEventListener('input', () => { sizeVal.textContent = `${sizeSlider.value}px`; });
-  sizeSlider.addEventListener('change', () => { locations[locIdx].labelSize = parseInt(sizeSlider.value); buildTooltipStyles(); save(); });
+  sizeSlider.addEventListener('change', () => {
+    preserveLabelScreenPosition(locIdx, () => {
+      locations[locIdx].labelSize = parseInt(sizeSlider.value);
+      buildTooltipStyles();
+    });
+    save();
+  });
   lblSizeRow.appendChild(sizeSlider); lblSizeRow.appendChild(sizeVal);
   panel.appendChild(lblSizeRow);
+
+  const numSizeRow = document.createElement('div');
+  numSizeRow.className = 'lep-row';
+  numSizeRow.innerHTML = '<span class="lep-label"># size</span>';
+  const numSizeSlider = document.createElement('input');
+  numSizeSlider.type = 'range';
+  numSizeSlider.min = 50;
+  numSizeSlider.max = 180;
+  numSizeSlider.step = 5;
+  numSizeSlider.value = loc.labelNumberSize ?? 85;
+  numSizeSlider.className = 'sp-slider';
+  const numSizeVal = document.createElement('span');
+  numSizeVal.className = 'sp-slider-val';
+  numSizeVal.textContent = `${loc.labelNumberSize ?? 85}%`;
+  numSizeSlider.addEventListener('input', () => { numSizeVal.textContent = `${numSizeSlider.value}%`; });
+  numSizeSlider.addEventListener('change', () => {
+    preserveLabelScreenPosition(locIdx, () => {
+      locations[locIdx].labelNumberSize = parseInt(numSizeSlider.value, 10);
+      rebuildMarkers();
+    });
+    renderLocList(); save();
+  });
+  numSizeRow.appendChild(numSizeSlider);
+  numSizeRow.appendChild(numSizeVal);
+  panel.appendChild(numSizeRow);
+
+  const alignRow = document.createElement('div');
+  alignRow.className = 'lep-row';
+  alignRow.innerHTML = '<span class="lep-label">Align</span>';
+  [
+    ['left', 'Left'],
+    ['center', 'Center'],
+    ['right', 'Right'],
+  ].forEach(([value, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'sp-btn label-align-btn' + ((loc.labelTextAlign || 'center') === value ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      preserveLabelScreenPosition(locIdx, () => {
+        locations[locIdx].labelTextAlign = value;
+        buildTooltipStyles();
+      });
+      renderLocList(); save();
+    });
+    alignRow.appendChild(btn);
+  });
+  panel.appendChild(alignRow);
 
   // Text / BG / Border color pickers
   [
     { key: 'labelNumberColor', label: '# Color',  def: loc.labelTextColor || '#18181b' },
     { key: 'labelTextColor',   label: 'Text',     def: '#18181b' },
-    { key: 'labelBg',          label: 'Label BG', def: '#ffffff' },
-    { key: 'labelBorderColor', label: 'Border',   def: loc.markerColor || '#89b4fa' },
-  ].forEach(({ key, label, def }) => {
+    { key: 'labelBg',          label: 'Label BG', def: '#ffffff', transparent: true },
+    { key: 'labelBorderColor', label: 'Border',   def: loc.markerColor || '#89b4fa', transparent: true },
+  ].forEach(({ key, label, def, transparent }) => {
     const row = document.createElement('div'); row.className = 'lep-row';
     row.innerHTML = `<span class="lep-label">${label}</span>`;
     const inp = document.createElement('input'); inp.type = 'color';
-    inp.value = loc[key] || def;
+    inp.value = loc[key] && loc[key] !== 'transparent' ? loc[key] : def;
     inp.style.cssText = 'width:34px;height:24px;border:none;border-radius:5px;cursor:pointer;padding:1px;flex-shrink:0;';
-    inp.addEventListener('input', () => { locations[locIdx][key] = inp.value; buildTooltipStyles(); save(); });
+    inp.addEventListener('input', () => {
+      preserveLabelScreenPosition(locIdx, () => {
+        locations[locIdx][key] = inp.value;
+        buildTooltipStyles();
+      });
+      save();
+    });
     row.appendChild(inp);
+    if (transparent) {
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'sp-btn transparent-toggle' + (loc[key] === 'transparent' ? ' active' : '');
+      clearBtn.textContent = 'Transparent';
+      clearBtn.addEventListener('click', () => {
+        preserveLabelScreenPosition(locIdx, () => {
+          locations[locIdx][key] = locations[locIdx][key] === 'transparent' ? inp.value : 'transparent';
+          buildTooltipStyles();
+        });
+        renderLocList(); save();
+      });
+      row.appendChild(clearBtn);
+    }
     panel.appendChild(row);
   });
 
@@ -1178,7 +1446,7 @@ function makeLocEditPanel(locIdx) {
     const src = locations[locIdx];
     const keys = [
       'labelMode','labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
-      'labelPos','labelRound','labelSize','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
+      'labelPos','labelRound','labelSize','labelNumberSize','labelTextAlign','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
     ];
     locations.forEach((l, j) => { if (j !== locIdx) keys.forEach(k => { l[k] = src[k]; }); });
     rebuildMarkers(); renderLocList(); save();
@@ -1190,9 +1458,25 @@ function makeLocEditPanel(locIdx) {
 }
 
 // ── Render location list ──────────────────────────────────────────────────────
+function rememberPanelScrollPositions(root) {
+  root.querySelectorAll('[data-scroll-key]').forEach(node => {
+    panelScrollPositions[node.dataset.scrollKey] = node.scrollTop;
+  });
+}
+
+function restorePanelScrollPositions(root) {
+  root.querySelectorAll('[data-scroll-key]').forEach(node => {
+    const saved = panelScrollPositions[node.dataset.scrollKey];
+    if (saved != null) node.scrollTop = saved;
+  });
+}
+
 function renderLocList() {
   renderNextModeBtns();
   const el = document.getElementById('loc-list');
+  const listScrollTop = el.scrollTop;
+  rememberPanelScrollPositions(el);
+
   el.innerHTML = '';
 
   if (!locations.length) {
@@ -1258,6 +1542,13 @@ function renderLocList() {
 
     if (expandedLocIdx === i) el.appendChild(makeLocEditPanel(i));
   });
+
+  const restoreScroll = () => {
+    el.scrollTop = listScrollTop;
+    restorePanelScrollPositions(el);
+  };
+  restoreScroll();
+  requestAnimationFrame(restoreScroll);
 }
 
 // ── Change route type ─────────────────────────────────────────────────────────
@@ -1272,7 +1563,8 @@ async function changeRouteType(idx, newType) {
 // ── Fit map ───────────────────────────────────────────────────────────────────
 function fitAll() {
   if (!locations.length) return;
-  map.fitBounds(L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.15));
+  const bounds = L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.22);
+  map.fitBounds(bounds, { maxZoom: 12 });
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -1282,10 +1574,12 @@ function save() {
 }
 
 function normalizeRoute(r) {
+  const shape = r.shape === 'curve' ? 'curve' : 'route';
   return {
     fromIdx: r.fromIdx, toIdx: r.toIdx, type: r.type || 'car',
     color:  r.color  ?? (r.colorMode === 'custom' ? r.customColor : null),
     dash:   r.dash   ?? (r.style === 'dashed' ? 'dashed' : r.style === 'dotted' ? 'dotted' : 'solid'),
+    shape,
     weight: r.weight ?? null,
   };
 }
@@ -1295,6 +1589,7 @@ function currentSettings() {
     uiTheme: document.documentElement.getAttribute('data-theme') || 'dark',
     mapTheme: document.getElementById('theme-select').value || 'voyager',
     labelFont: document.getElementById('label-font-select').value || 'Noto Sans KR',
+    paletteOrder: paletteOrderSettings(),
   };
 }
 
@@ -1312,6 +1607,7 @@ function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   const mapTheme = settings.mapTheme || localStorage.getItem('trip-mapper-map-theme') || 'voyager';
   const labelFont = settings.labelFont || settings.font || localStorage.getItem('trip-mapper-label-font') || localStorage.getItem('trip-mapper-font') || 'Noto Sans KR';
 
+  applyPaletteOrderSettings(settings.paletteOrder || {});
   applyUiTheme(uiTheme, { persist });
   document.getElementById('theme-select').value = mapTheme;
   setMapTheme(mapTheme);
@@ -1339,6 +1635,7 @@ function load() {
     const d = JSON.parse(raw);
     locations = (d.locations || []).map(normalizeLoc);
     routes = (d.routes || []).map(normalizeRoute);
+    applyTripSettings(d.settings || {}, { persist: false });
   } catch {}
 }
 
@@ -1367,7 +1664,7 @@ async function rebuildAll() {
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
-  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', weight: null };
+  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', shape: 'route', weight: null };
 }
 
 async function addLocationAuto(name, lat, lng) {
@@ -1407,7 +1704,7 @@ async function deleteLocation(idx) {
   });
 
   if (hasPrev && hasNext) {
-    routes.push({ fromIdx: idx-1, toIdx: idx, type: reconnectType, color: null, dash: 'solid', weight: null });
+    routes.push({ fromIdx: idx-1, toIdx: idx, type: reconnectType, color: null, dash: 'solid', shape: 'route', weight: null });
     routes.sort((a, b) => a.fromIdx - b.fromIdx);
   }
 
