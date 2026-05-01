@@ -20,5 +20,3 @@ Mapping trips.
   loading="lazy">
 </iframe>
 ```
-
-The exported JSON includes locations, routes, labels, notes/date label settings, marker styles, route styles, map theme, UI theme, and font.
