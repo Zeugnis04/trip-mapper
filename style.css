@@ -1,5 +1,5 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-family); font-size: 13px; }
+html, body, #app { height: 100%; overflow: hidden; font-family: var(--ui-font-family); font-size: 13px; }
 
 /* ── Themes ── */
 :root {
@@ -7,7 +7,8 @@ html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-famil
   --fg: #cdd6f4;  --fg2: #a6adc8;
   --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8;
   --shadow: rgba(0,0,0,.4);
-  --font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --ui-font-family: "JetBrains Mono","Noto Sans KR",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --label-font-family: "Noto Sans KR","JetBrains Mono",system-ui,sans-serif;
 }
 :root[data-theme="light"] {
   --bg0: #f4f4f5; --bg1: #ffffff; --bg2: #e4e4e7; --bg3: #d4d4d8;
@@ -17,6 +18,13 @@ html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-famil
 }
 
 #app { display: flex; flex-direction: column; background: var(--bg0); color: var(--fg); }
+body.embed-mode #topbar,
+body.embed-mode #sidebar {
+  display: none;
+}
+body.embed-mode #main {
+  flex: 1;
+}
 
 /* ── Top bar ── */
 #topbar {
@@ -25,6 +33,15 @@ html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-famil
   border-bottom: 1px solid var(--bg3); color: var(--fg);
 }
 #topbar h1 { font-size: 15px; font-weight: 700; margin-right: 4px; white-space: nowrap; }
+.toolbar-divider {
+  width: 1px; height: 18px; background: var(--bg3); flex-shrink: 0;
+}
+.toolbar-label {
+  color: var(--fg2); font-size: 12px; white-space: nowrap;
+}
+.toolbar-select { width: 120px; }
+.toolbar-spacer { flex: 1; }
+.hidden-file-input { display: none; }
 
 /* ── Main ── */
 #main { display: flex; flex: 1; overflow: hidden; }
@@ -40,6 +57,10 @@ html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-famil
   display: flex; flex-direction: column; gap: 6px;
 }
 .form-row { display: flex; gap: 6px; align-items: center; }
+.form-row-tight { gap: 4px; }
+.flex-fill { flex: 1; }
+.btn-full { width: 100%; }
+.btn-search { padding: 5px 9px; }
 
 /* ── Inputs ── */
 input[type="text"], select {
@@ -75,6 +96,8 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .btn-sm.edit:hover { background: var(--yellow); color: #18181b; }
 
 /* ── Mode emoji buttons ── */
+.mode-row { display: none; flex-direction: column; gap: 4px; }
+.mode-label { color: var(--fg2); font-size: 10px; }
 .mode-btns { display: flex; gap: 3px; flex-wrap: nowrap; }
 .mode-btn {
   width: 26px; height: 24px; border: none; border-radius: 5px;
@@ -106,6 +129,15 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   background: var(--accent); color: #fff;
   font-size: 10px; font-weight: 700; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
+}
+.map-marker-shape {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,.85);
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  color: #18181b;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 800; line-height: 1;
 }
 
 /* ── Timeline connector ── */
@@ -172,6 +204,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .sp-row-wrap { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 
 /* Palette accordion */
+.palette-section { display: flex; flex-direction: column; gap: 4px; }
 .palette-entry {
   border-radius: 5px; overflow: hidden;
   border: 1px solid var(--bg3);
@@ -185,6 +218,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .palette-name { font-size: 11px; color: var(--fg2); flex: 1; }
 .palette-strip { display: flex; gap: 2px; flex-shrink: 0; }
 .palette-strip span { width: 9px; height: 14px; border-radius: 2px; display: block; }
+.palette-arrow { font-size: 10px; color: var(--fg2); flex-shrink: 0; }
 .palette-body {
   display: none; flex-direction: column; gap: 5px;
   padding: 6px; background: var(--bg1);
@@ -236,13 +270,35 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 /* Leaflet tooltip base override for location labels */
 .leaflet-tooltip.loc-label-tt {
   border-width: 2px;
-  font-family: var(--font-family);
+  font-family: var(--label-font-family);
   font-weight: 700;
-  white-space: nowrap;
+  min-width: 48px;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
   padding: 2px 6px;
   transition: opacity .18s;
 }
-
+.loc-label-date,
+.loc-label-notes {
+  color: inherit;
+  font-size: .9em;
+  font-weight: 500;
+  opacity: .78;
+}
+.loc-label-number {
+  font-size: .85em;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.loc-label-content {
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.loc-label-notes {
+  white-space: normal;
+}
 /* ── Toast ── */
 #toast {
   position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
@@ -269,7 +325,7 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 .lep-input {
   flex: 1; background: var(--bg2); border: 1px solid var(--bg3);
   color: var(--fg); border-radius: 5px; padding: 3px 6px;
-  font-size: 12px; font-family: var(--font-family); width: 100%;
+  font-size: 12px; font-family: var(--ui-font-family); width: 100%;
 }
 .lep-input:focus { outline: none; border-color: var(--accent); }
 textarea.lep-input { resize: vertical; min-height: 46px; line-height: 1.5; }
@@ -285,3 +341,13 @@ input[type="date"].lep-input { color-scheme: dark; }
 }
 .shape-btn.active { background: var(--accent); color: #fff; }
 .shape-btn:hover:not(.active) { background: var(--bg3); }
+.label-mode-btn {
+  width: auto;
+  min-width: 50px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.label-content-btn {
+  min-width: 44px;
+  text-align: center;
+}
