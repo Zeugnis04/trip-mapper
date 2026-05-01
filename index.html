@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,25 +7,30 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body, #app { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; font-size: 13px; }
+    html, body, #app { height: 100%; overflow: hidden; font-family: var(--font-family); font-size: 13px; }
 
+    /* ── Themes ── */
     :root {
       --bg0: #1e1e2e; --bg1: #181825; --bg2: #313244; --bg3: #45475a;
       --fg: #cdd6f4;  --fg2: #a6adc8;
-      --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af;
-      --red: #f38ba8;    --mauve: #cba6f7;
+      --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8;
+      --shadow: rgba(0,0,0,.4);
+      --font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    :root[data-theme="light"] {
+      --bg0: #f4f4f5; --bg1: #ffffff; --bg2: #e4e4e7; --bg3: #d4d4d8;
+      --fg: #18181b;  --fg2: #71717a;
+      --accent: #3b82f6; --green: #16a34a; --yellow: #ca8a04; --red: #dc2626;
+      --shadow: rgba(0,0,0,.12);
     }
 
-    #app { display: flex; flex-direction: column; }
+    #app { display: flex; flex-direction: column; background: var(--bg0); color: var(--fg); }
 
     /* ── Top bar ── */
     #topbar {
-      flex-shrink: 0;
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 12px;
-      background: var(--bg1);
-      border-bottom: 1px solid var(--bg3);
-      color: var(--fg);
+      flex-shrink: 0; display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; background: var(--bg1);
+      border-bottom: 1px solid var(--bg3); color: var(--fg);
     }
     #topbar h1 { font-size: 15px; font-weight: 700; margin-right: 4px; white-space: nowrap; }
 
@@ -34,64 +39,64 @@
 
     /* ── Sidebar ── */
     #sidebar {
-      width: 270px; flex-shrink: 0;
-      background: var(--bg0); color: var(--fg);
+      width: 278px; flex-shrink: 0; background: var(--bg0);
       display: flex; flex-direction: column;
-      border-right: 1px solid var(--bg3);
-      overflow: hidden;
+      border-right: 1px solid var(--bg3); overflow: hidden;
     }
-    .tabs { display: flex; border-bottom: 1px solid var(--bg3); }
-    .tab-btn {
-      flex: 1; padding: 8px;
-      background: none; border: none; color: var(--fg2);
-      cursor: pointer; font-size: 13px; font-weight: 600;
-    }
-    .tab-btn.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
-    .tab-btn:hover:not(.active) { background: var(--bg2); }
-
-    .tab-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-    .tab-panel.active { display: flex; }
-
     .form-section {
       padding: 10px; border-bottom: 1px solid var(--bg3);
       display: flex; flex-direction: column; gap: 6px;
     }
     .form-row { display: flex; gap: 6px; align-items: center; }
-    .form-row label { color: var(--fg2); font-size: 11px; white-space: nowrap; min-width: 36px; }
 
-    input[type="text"], input[type="number"], select, textarea {
+    /* ── Inputs ── */
+    input[type="text"], select {
       background: var(--bg2); border: 1px solid var(--bg3);
       color: var(--fg); border-radius: 5px; padding: 4px 7px;
       font-size: 12px; width: 100%;
     }
-    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
-    textarea { resize: vertical; height: 44px; }
-    input[type="color"] {
-      width: 30px; height: 24px; padding: 1px;
-      border-radius: 4px; cursor: pointer; flex-shrink: 0;
-    }
+    input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); }
 
+    /* ── Buttons ── */
     .btn {
       padding: 5px 10px; border: none; border-radius: 5px;
       cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;
+      background: var(--bg2); color: var(--fg);
     }
-    .btn-accent { background: var(--accent); color: var(--bg0); }
-    .btn-green  { background: var(--green);  color: var(--bg0); }
-    .btn-yellow { background: var(--yellow); color: var(--bg0); }
-    .btn-red    { background: var(--red);    color: var(--bg0); }
-    .btn:disabled { opacity: .5; cursor: not-allowed; }
-
+    .btn-accent { background: var(--accent); color: #fff; }
+    .btn-green  { background: var(--green);  color: #18181b; }
+    .btn-yellow { background: var(--yellow); color: #18181b; }
+    .btn-red    { background: var(--red);    color: #fff; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-icon {
+      padding: 4px 6px; border: none; border-radius: 5px;
+      background: none; cursor: pointer; font-size: 15px; line-height: 1;
+      color: var(--fg2); flex-shrink: 0;
+    }
+    .btn-icon:hover { background: var(--bg2); }
     .btn-sm {
-      padding: 2px 7px; font-size: 11px;
-      background: var(--bg3); color: var(--fg2);
-      border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;
+      padding: 2px 7px; font-size: 11px; background: var(--bg3);
+      color: var(--fg2); border: none; border-radius: 4px; cursor: pointer; flex-shrink: 0;
     }
-    .btn-sm.fly:hover  { background: var(--accent); color: var(--bg0); }
-    .btn-sm.del:hover  { background: var(--red);    color: var(--bg0); }
+    .btn-sm.fly:hover  { background: var(--accent); color: #fff; }
+    .btn-sm.del:hover  { background: var(--red);    color: #fff; }
+    .btn-sm.edit:hover { background: var(--yellow); color: #18181b; }
 
+    /* ── Mode emoji buttons ── */
+    .mode-btns { display: flex; gap: 3px; flex-wrap: nowrap; }
+    .mode-btn {
+      width: 26px; height: 24px; border: none; border-radius: 5px;
+      background: var(--bg2); cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background .12s;
+    }
+    .mode-btn:hover:not(.active) { background: var(--bg3); }
+    .mode-btn.active { background: var(--accent); }
+
+    /* ── Location list ── */
     .item-list {
       flex: 1; overflow-y: auto; padding: 6px;
-      display: flex; flex-direction: column; gap: 4px;
+      display: flex; flex-direction: column; gap: 0;
     }
     .item-list::-webkit-scrollbar { width: 5px; }
     .item-list::-webkit-scrollbar-track { background: var(--bg1); }
@@ -104,16 +109,145 @@
     .item-body { flex: 1; overflow: hidden; }
     .item-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .item-sub  { color: var(--fg2); font-size: 11px; }
-    .route-swatch { width: 26px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+    .loc-num {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 10px; font-weight: 700; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Timeline connector ── */
+    .connector {
+      display: flex; flex-direction: column;
+      padding: 2px 8px 2px 15px; gap: 4px;
+    }
+    .connector-row {
+      display: flex; align-items: center; gap: 5px;
+    }
+    .connector-bar {
+      width: 2px; height: 10px; background: var(--bg3);
+      border-radius: 1px; flex-shrink: 0;
+    }
+    .connector-spacer { flex: 1; }
+    .style-toggle {
+      padding: 0 5px; border: none; border-radius: 4px;
+      background: none; cursor: pointer; font-size: 13px; color: var(--fg2);
+      flex-shrink: 0; line-height: 22px;
+    }
+    .style-toggle:hover { background: var(--bg2); color: var(--fg); }
+    .style-toggle.open  { background: var(--bg2); color: var(--accent); }
+
+    /* ── Style panel ── */
+    .style-panel {
+      background: var(--bg1); border: 1px solid var(--bg3);
+      border-radius: 7px; padding: 8px; display: flex;
+      flex-direction: column; gap: 7px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+    .sp-row { display: flex; align-items: center; gap: 5px; }
+    .sp-label { font-size: 10px; color: var(--fg2); min-width: 32px; }
+
+    /* Swatches */
+    .swatch {
+      width: 17px; height: 17px; border-radius: 4px; cursor: pointer;
+      border: 2px solid transparent; flex-shrink: 0; transition: transform .1s;
+    }
+    .swatch:hover { transform: scale(1.15); }
+    .swatch.active { border-color: var(--fg); }
+    .swatch-custom {
+      width: 17px; height: 17px; border-radius: 4px; cursor: pointer;
+      border: 1px dashed var(--bg3); overflow: hidden; flex-shrink: 0;
+      position: relative;
+    }
+    .swatch-custom input[type="color"] {
+      position: absolute; inset: -4px; width: calc(100% + 8px);
+      height: calc(100% + 8px); border: none; cursor: pointer; opacity: 0;
+    }
+    .swatch-custom-fill {
+      width: 100%; height: 100%; border-radius: 3px;
+      background: conic-gradient(red,yellow,lime,cyan,blue,magenta,red);
+    }
+
+    /* Dash / weight buttons */
+    .sp-btn {
+      padding: 2px 7px; font-size: 11px; border: none; border-radius: 4px;
+      background: var(--bg2); color: var(--fg2); cursor: pointer; flex-shrink: 0;
+    }
+    .sp-btn:hover   { background: var(--bg3); }
+    .sp-btn.active  { background: var(--accent); color: #fff; }
+
+    /* Color swatch row wraps */
+    .sp-row-wrap { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+    /* Palette accordion */
+    .palette-entry {
+      border-radius: 5px; overflow: hidden;
+      border: 1px solid var(--bg3);
+    }
+    .palette-header {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 6px; cursor: pointer; background: var(--bg2);
+    }
+    .palette-header:hover { background: var(--bg3); }
+    .palette-header.open  { background: var(--bg3); }
+    .palette-name { font-size: 11px; color: var(--fg2); flex: 1; }
+    .palette-strip { display: flex; gap: 2px; flex-shrink: 0; }
+    .palette-strip span { width: 9px; height: 14px; border-radius: 2px; display: block; }
+    .palette-body {
+      display: none; flex-direction: column; gap: 5px;
+      padding: 6px; background: var(--bg1);
+    }
+    .palette-body.open { display: flex; }
+    .palette-swatches { display: flex; gap: 4px; flex-wrap: wrap; }
+    .palette-apply {
+      align-self: flex-start; padding: 2px 8px; font-size: 10px;
+      border: none; border-radius: 4px; cursor: pointer;
+      background: var(--accent); color: #fff;
+    }
+    .palette-apply:hover { opacity: .85; }
+
+    /* Width slider */
+    .sp-slider { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .sp-slider-val { font-size: 11px; color: var(--fg2); min-width: 28px; text-align: right; flex-shrink: 0; }
+
+    /* Apply-to-all button */
+    .sp-all {
+      padding: 2px 6px; font-size: 10px; border: none; border-radius: 4px;
+      background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; margin-left: auto;
+    }
+    .sp-all:hover { background: var(--accent); color: #fff; }
+
+    /* Palette apply-mode toggle */
+    .pal-mode-row { display: flex; align-items: center; gap: 4px; }
+    .pal-mode-row .sp-label { flex: 1; }
+
+    /* ── Search dropdown ── */
+    #search-drop {
+      display: none; flex-direction: column; background: var(--bg2);
+      border: 1px solid var(--bg3); border-radius: 5px;
+      max-height: 190px; overflow-y: auto;
+    }
+    .s-item {
+      padding: 6px 8px; cursor: pointer;
+      border-bottom: 1px solid var(--bg3); flex-shrink: 0;
+    }
+    .s-item:last-child { border-bottom: none; }
+    .s-item:hover { background: var(--bg3); }
+    .s-item-name { font-size: 12px; font-weight: 600; }
+    .s-item-sub  { font-size: 10px; color: var(--fg2); margin-top: 1px;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Map ── */
     #map { flex: 1; }
-
-    .marker-label {
-      background: white; border: 2px solid #89b4fa;
-      border-radius: 4px; padding: 1px 5px;
-      font-size: 11px; font-weight: 700; white-space: nowrap;
-      box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    #map.pick-mode { cursor: crosshair; }
+    /* Leaflet tooltip base override for location labels */
+    .leaflet-tooltip.loc-label-tt {
+      border-width: 2px;
+      font-family: var(--font-family);
+      font-weight: 700;
+      white-space: nowrap;
+      padding: 2px 6px;
+      transition: opacity .18s;
     }
 
     /* ── Toast ── */
@@ -123,8 +257,41 @@
       padding: 5px 16px; border-radius: 20px; font-size: 12px;
       pointer-events: none; opacity: 0; transition: opacity .25s;
       z-index: 9999; border: 1px solid var(--bg3);
+      box-shadow: 0 2px 8px var(--shadow);
     }
     #toast.show { opacity: 1; }
+
+    .empty-hint { color: var(--fg2); font-size: 12px; text-align: center; padding: 20px 12px; line-height: 1.6; }
+
+    /* ── Location edit panel ── */
+    .loc-edit-panel {
+      background: var(--bg1); border: 1px solid var(--bg3);
+      border-radius: 7px; padding: 8px;
+      display: flex; flex-direction: column; gap: 7px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+    .lep-row { display: flex; align-items: center; gap: 6px; }
+    .lep-row.top { align-items: flex-start; }
+    .lep-label { font-size: 10px; color: var(--fg2); min-width: 52px; flex-shrink: 0; padding-top: 1px; }
+    .lep-input {
+      flex: 1; background: var(--bg2); border: 1px solid var(--bg3);
+      color: var(--fg); border-radius: 5px; padding: 3px 6px;
+      font-size: 12px; font-family: var(--font-family); width: 100%;
+    }
+    .lep-input:focus { outline: none; border-color: var(--accent); }
+    textarea.lep-input { resize: vertical; min-height: 46px; line-height: 1.5; }
+    input[type="date"].lep-input { color-scheme: dark; }
+    :root[data-theme="light"] input[type="date"].lep-input { color-scheme: light; }
+
+    /* Shape picker */
+    .shape-btn {
+      width: 26px; height: 26px; border: none; border-radius: 5px;
+      background: var(--bg2); cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; color: var(--fg2);
+    }
+    .shape-btn.active { background: var(--accent); color: #fff; }
+    .shape-btn:hover:not(.active) { background: var(--bg3); }
   </style>
 </head>
 <body>
@@ -132,97 +299,42 @@
 
   <div id="topbar">
     <h1>Trip Mapper</h1>
-    <label style="color:var(--fg2);font-size:12px;white-space:nowrap;">Map theme</label>
-    <select id="theme-select" style="width:150px;">
+    <!-- UI theme toggle -->
+    <button class="btn-icon" id="btn-ui-theme" title="Toggle light/dark">🌙</button>
+    <div style="width:1px;height:18px;background:var(--bg3);flex-shrink:0;"></div>
+    <label style="color:var(--fg2);font-size:12px;white-space:nowrap;">Map</label>
+    <select id="theme-select" style="width:120px;">
       <option value="voyager">Voyager</option>
-      <option value="light">Light (Positron)</option>
-      <option value="dark">Dark Matter</option>
-      <option value="osm">OSM Standard</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+      <option value="osm">OSM</option>
     </select>
+    <div style="width:1px;height:18px;background:var(--bg3);flex-shrink:0;"></div>
+    <label style="color:var(--fg2);font-size:12px;white-space:nowrap;">Font</label>
+    <select id="font-select" style="width:120px;"></select>
     <div style="flex:1"></div>
-    <button class="btn btn-green"  id="btn-export">Export JSON</button>
-    <button class="btn btn-yellow" id="btn-import">Import JSON</button>
-    <button class="btn btn-red"    id="btn-clear">Clear all</button>
+    <button class="btn btn-green"  id="btn-export">Export</button>
+    <button class="btn btn-yellow" id="btn-import">Import</button>
+    <button class="btn btn-red"    id="btn-clear">Clear</button>
     <input id="file-input" type="file" accept=".json" style="display:none" />
   </div>
 
   <div id="main">
     <div id="sidebar">
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="locations">Locations</button>
-        <button class="tab-btn"        data-tab="routes">Routes</button>
-      </div>
-
-      <!-- Locations tab -->
-      <div id="tab-locations" class="tab-panel active">
-        <div class="form-section">
-          <input id="loc-name" type="text" placeholder="Location name" />
-          <div class="form-row" style="gap:4px;">
-            <input id="loc-lat" type="number" placeholder="Latitude"  step="any" />
-            <input id="loc-lng" type="number" placeholder="Longitude" step="any" />
-          </div>
-          <textarea id="loc-note" placeholder="Notes (optional)"></textarea>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="color:var(--fg2);font-size:11px;">Click map to fill coords</span>
-            <button class="btn btn-accent" id="btn-add-loc">Add</button>
-          </div>
+      <div class="form-section">
+        <div id="mode-row" style="display:none; flex-direction:column; gap:4px;">
+          <span style="color:var(--fg2);font-size:10px;">TRAVEL MODE TO NEXT STOP</span>
+          <div class="mode-btns" id="next-mode-btns"></div>
         </div>
-        <div class="item-list" id="loc-list"></div>
-      </div>
-
-      <!-- Routes tab -->
-      <div id="tab-routes" class="tab-panel">
-        <div class="form-section">
-          <div class="form-row">
-            <label>From</label>
-            <select id="route-from"></select>
-          </div>
-          <div class="form-row">
-            <label>To</label>
-            <select id="route-to"></select>
-          </div>
-          <div class="form-row">
-            <label>Type</label>
-            <select id="route-type">
-              <option value="car">🚗 Car</option>
-              <option value="walk">🚶 Walk</option>
-              <option value="bicycle">🚲 Bicycle</option>
-              <option value="flight">✈️ Flight</option>
-              <option value="ferry">⛴️ Ferry</option>
-              <option value="subway">🚇 Subway</option>
-              <option value="train">🚆 Train</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label>Color</label>
-            <select id="route-color-mode" style="flex:1;">
-              <option value="default">Default for type</option>
-              <option value="custom">Custom…</option>
-              <option value="none">No color (gray)</option>
-            </select>
-            <input id="route-color-pick" type="color" value="#e67e22" style="display:none;" />
-          </div>
-          <div class="form-row">
-            <label>Stroke</label>
-            <select id="route-style">
-              <option value="default">Default for type</option>
-              <option value="solid">Solid</option>
-              <option value="dashed">Dashed</option>
-              <option value="dotted">Dotted</option>
-            </select>
-          </div>
-          <div class="form-row">
-            <label>Label</label>
-            <input id="route-label" type="text" placeholder="Optional label" />
-          </div>
-          <div style="display:flex;justify-content:flex-end;">
-            <button class="btn btn-accent" id="btn-add-route">Add Route</button>
-          </div>
+        <div class="form-row" style="gap:4px;">
+          <input id="loc-search" type="text" placeholder="Search a place…" style="flex:1;" />
+          <button class="btn btn-accent" id="btn-search" style="padding:5px 9px;">Go</button>
         </div>
-        <div class="item-list" id="route-list"></div>
+        <div id="search-drop"></div>
+        <button class="btn btn-green" id="btn-pick-loc" style="width:100%;">📌 Pick on map</button>
       </div>
+      <div class="item-list" id="loc-list"></div>
     </div>
-
     <div id="map"></div>
   </div>
 </div>
@@ -232,26 +344,14 @@
 <script>
 // ── Themes ────────────────────────────────────────────────────────────────────
 const THEMES = {
-  voyager: {
-    url:  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
-    sub:  'abcd',
-  },
-  light: {
-    url:  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
-    sub:  'abcd',
-  },
-  dark: {
-    url:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/">CARTO</a>',
-    sub:  'abcd',
-  },
-  osm: {
-    url:  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attr: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    sub:  'abc',
-  },
+  voyager: { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+             attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
+  light:   { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+             attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
+  dark:    { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+             attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
+  osm:     { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+             attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors', sub: 'abc' },
 };
 
 // ── Route type metadata ───────────────────────────────────────────────────────
@@ -264,227 +364,794 @@ const ROUTE_META = {
   subway:  { color: '#9b59b6', dashArray: null,   weight: 4, routing: 'straight'     },
   train:   { color: '#c0392b', dashArray: null,   weight: 4, routing: 'straight'     },
 };
-
 const TYPE_EMOJI = { car:'🚗', walk:'🚶', bicycle:'🚲', flight:'✈️', ferry:'⛴️', subway:'🚇', train:'🚆' };
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let locations   = [];
-let routes      = [];
-let locMarkers  = [];   // { marker, labelMkr }
-let routeLayers = [];   // leaflet Polyline | null, parallel to routes[]
+// ── Color palettes ────────────────────────────────────────────────────────────
+const PALETTES = {
+  'Type default': null,
+  Neon:   ['#ff006e','#fb5607','#ffbe0b','#06d6a0','#3a86ff','#8338ec','#f72585'],
+  Pastel: ['#ffadad','#ffd6a5','#fdffb6','#caffbf','#9bf6ff','#a0c4ff','#bdb2ff'],
+  Earth:  ['#7c4a1e','#c07941','#d4a030','#557a55','#4e7c8c','#6d6a75','#8b5e52'],
+  Ocean:  ['#03045e','#0077b6','#0096c7','#00b4d8','#48cae4','#90e0ef','#ade8f4'],
+  Mono:   ['#f0f0f0','#c0c0c0','#909090','#606060','#404040','#202020','#888888'],
+};
+const NEUTRAL_COLOR = '#888888';
 
-// ── Map setup ─────────────────────────────────────────────────────────────────
+// ── Font options ──────────────────────────────────────────────────────────────
+const FONTS = [
+  { name: 'System UI',      stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', gf: null },
+  { name: 'Inter',          stack: '"Inter",system-ui,sans-serif',                                      gf: 'Inter:wght@400;600;700' },
+  { name: 'Roboto',         stack: '"Roboto",system-ui,sans-serif',                                     gf: 'Roboto:wght@400;700' },
+  { name: 'Nunito',         stack: '"Nunito",system-ui,sans-serif',                                     gf: 'Nunito:wght@400;600;700' },
+  { name: 'Lato',           stack: '"Lato",system-ui,sans-serif',                                       gf: 'Lato:wght@400;700' },
+  { name: 'Merriweather',   stack: '"Merriweather",Georgia,"Times New Roman",serif',                    gf: 'Merriweather:wght@400;700' },
+  { name: 'Playfair',       stack: '"Playfair Display",Georgia,"Times New Roman",serif',                gf: 'Playfair+Display:wght@400;700' },
+  { name: 'JetBrains Mono', stack: '"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace',    gf: 'JetBrains+Mono:wght@400;700' },
+];
+
+// ── Location shapes ───────────────────────────────────────────────────────────
+const LOC_SHAPES = {
+  circle:   { css: 'border-radius:50%;',                                                                                                     label: '●' },
+  square:   { css: 'border-radius:3px;',                                                                                                     label: '■' },
+  diamond:  { css: 'border-radius:2px;transform:rotate(45deg);',                                                                             label: '◆' },
+  triangle: { css: 'clip-path:polygon(50% 0%,100% 100%,0% 100%);border-radius:0;',                                                          label: '▲' },
+  star:     { css: 'clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);border-radius:0;',   label: '★' },
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let locations    = [];
+let routes       = [];
+let locMarkers   = [];
+let routeLayers  = [];
+let nextRouteType    = 'car';
+let expandedIdx      = null;  // which route's style panel is open
+let expandedPalette  = null;  // which palette accordion is open in style panel
+let expandedLocIdx   = null;  // which location's edit panel is open
+let paletteApplyMode = 'sequential'; // 'sequential' | 'bytype'
+
+// ── Map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map').setView([20, 0], 2);
 let tileLayer = null;
-
-function setTheme(key) {
+function setMapTheme(key) {
   const t = THEMES[key] || THEMES.voyager;
   if (tileLayer) map.removeLayer(tileLayer);
   tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: 19 }).addTo(map);
 }
 
+// ── UI Theme ──────────────────────────────────────────────────────────────────
+function applyUiTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('btn-ui-theme').textContent = theme === 'dark' ? '🌙' : '☀️';
+  localStorage.setItem('trip-mapper-ui-theme', theme);
+}
+document.getElementById('btn-ui-theme').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  applyUiTheme(cur === 'dark' ? 'light' : 'dark');
+});
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let toastTimer;
 function toast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
+  el.textContent = msg; el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// ── Geometry helpers ──────────────────────────────────────────────────────────
+// ── Geocoding ─────────────────────────────────────────────────────────────────
+const NOMINATIM_LANG = navigator.language || 'en';
+async function geocodeSearch(query) {
+  const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(query)}`, { headers: { 'Accept-Language': NOMINATIM_LANG } });
+  return (await res.json()).map(r => ({
+    name: r.name || r.display_name.split(',')[0].trim(),
+    displayName: r.display_name,
+    lat: parseFloat(r.lat), lng: parseFloat(r.lon),
+  }));
+}
+async function reverseGeocode(lat, lng) {
+  try {
+    const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, { headers: { 'Accept-Language': NOMINATIM_LANG } });
+    const data = await res.json();
+    return (data.name || data.display_name || '').split(',')[0].trim() || 'My Location';
+  } catch { return 'My Location'; }
+}
+
+// ── Geometry ──────────────────────────────────────────────────────────────────
 function greatCirclePoints(lat1, lng1, lat2, lng2, n = 80) {
-  const toR = d => d * Math.PI / 180;
-  const toD = r => r * 180 / Math.PI;
+  const toR = d => d * Math.PI / 180, toD = r => r * 180 / Math.PI;
   const p1 = toR(lat1), l1 = toR(lng1), p2 = toR(lat2), l2 = toR(lng2);
-  const d = 2 * Math.asin(Math.sqrt(
-    Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((l2 - l1) / 2) ** 2
-  ));
+  const d = 2 * Math.asin(Math.sqrt(Math.sin((p2-p1)/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin((l2-l1)/2)**2));
   if (d === 0) return [[lat1, lng1]];
   const pts = [];
   for (let i = 0; i <= n; i++) {
-    const f = i / n;
-    const A = Math.sin((1 - f) * d) / Math.sin(d);
-    const B = Math.sin(f * d) / Math.sin(d);
-    const x = A * Math.cos(p1) * Math.cos(l1) + B * Math.cos(p2) * Math.cos(l2);
-    const y = A * Math.cos(p1) * Math.sin(l1) + B * Math.cos(p2) * Math.sin(l2);
-    const z = A * Math.sin(p1) + B * Math.sin(p2);
-    pts.push([toD(Math.atan2(z, Math.sqrt(x * x + y * y))), toD(Math.atan2(y, x))]);
+    const f = i/n, A = Math.sin((1-f)*d)/Math.sin(d), B = Math.sin(f*d)/Math.sin(d);
+    const x = A*Math.cos(p1)*Math.cos(l1)+B*Math.cos(p2)*Math.cos(l2);
+    const y = A*Math.cos(p1)*Math.sin(l1)+B*Math.cos(p2)*Math.sin(l2);
+    const z = A*Math.sin(p1)+B*Math.sin(p2);
+    pts.push([toD(Math.atan2(z, Math.sqrt(x*x+y*y))), toD(Math.atan2(y, x))]);
   }
   return pts;
 }
-
 async function fetchOsrmPoints(profile, from, to) {
-  const url = `https://router.project-osrm.org/route/v1/${profile}/` +
-    `${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
-  const res  = await fetch(url);
+  const res  = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`);
   const data = await res.json();
   if (data.code !== 'Ok') throw new Error(data.message);
   return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
 }
-
 async function resolvePoints(route) {
-  const from = locations[route.fromIdx];
-  const to   = locations[route.toIdx];
+  const from = locations[route.fromIdx], to = locations[route.toIdx];
   const { routing } = ROUTE_META[route.type];
-
   if (routing === 'greatcircle') return greatCirclePoints(from.lat, from.lng, to.lat, to.lng);
-
   if (routing.startsWith('osrm-')) {
-    try {
-      return await fetchOsrmPoints(routing.replace('osrm-', ''), from, to);
-    } catch {
-      toast('Routing unavailable — drawing straight line.');
-      return [[from.lat, from.lng], [to.lat, to.lng]];
-    }
+    try { return await fetchOsrmPoints(routing.replace('osrm-',''), from, to); }
+    catch { toast('Routing unavailable — drawing straight line.'); }
   }
   return [[from.lat, from.lng], [to.lat, to.lng]];
 }
 
-// ── Polyline styling ──────────────────────────────────────────────────────────
+// ── Polyline options ──────────────────────────────────────────────────────────
 function polylineOpts(route) {
-  const meta = ROUTE_META[route.type];
-  const color =
-    route.colorMode === 'none'   ? '#888' :
-    route.colorMode === 'custom' ? route.customColor :
-    meta.color;
-
+  const meta     = ROUTE_META[route.type];
+  const color    = route.color ?? meta.color;
+  const weight   = route.weight ?? meta.weight;
   const dashArray =
-    route.style === 'solid'  ? null   :
-    route.style === 'dashed' ? '8 6'  :
-    route.style === 'dotted' ? '2 6'  :
+    route.dash === 'solid'  ? null  :
+    route.dash === 'dashed' ? '10 7' :
+    route.dash === 'dotted' ? '2 8'  :
     meta.dashArray;
-
-  return { color, dashArray, weight: meta.weight, opacity: 0.85 };
+  return { color, dashArray, weight, opacity: 0.88 };
 }
 
-// ── Render: draw one route on map ─────────────────────────────────────────────
+// ── Draw / clear routes ───────────────────────────────────────────────────────
 async function drawRoute(idx) {
-  const route  = routes[idx];
-  const points = await resolvePoints(route);
-  const opts   = polylineOpts(route);
-  const layer  = L.polyline(points, opts).addTo(map);
-
-  const from = locations[route.fromIdx];
-  const to   = locations[route.toIdx];
-  layer.bindPopup(
-    `<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>` +
-    `${from.name} → ${to.name}` +
-    (route.label ? `<br/><em>${route.label}</em>` : '')
-  );
-
+  const route = routes[idx]; if (!route) return;
+  const layer = L.polyline(await resolvePoints(route), polylineOpts(route)).addTo(map);
+  const from = locations[route.fromIdx], to = locations[route.toIdx];
+  layer.bindPopup(`<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>${from.name} → ${to.name}`);
   while (routeLayers.length <= idx) routeLayers.push(null);
   if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
   routeLayers[idx] = layer;
 }
-
 function clearRouteLayer(idx) {
   if (routeLayers[idx]) { map.removeLayer(routeLayers[idx]); routeLayers[idx] = null; }
 }
 
-// ── Render: location marker ───────────────────────────────────────────────────
-function addLocMarker(loc) {
-  const icon   = L.divIcon({ className: 'marker-label', html: loc.name, iconAnchor: [-6, 12] });
-  const marker = L.marker([loc.lat, loc.lng]).addTo(map).bindPopup(
-    `<b>${loc.name}</b><br/><small>${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</small>` +
-    (loc.note ? `<br/><em>${loc.note}</em>` : '')
-  );
-  const labelMkr = L.marker([loc.lat, loc.lng], { icon, interactive: false }).addTo(map);
-  locMarkers.push({ marker, labelMkr });
+// ── Location data normalizer ──────────────────────────────────────────────────
+function normalizeLoc(l) {
+  return {
+    name: l.name, lat: l.lat, lng: l.lng,
+    description: l.description || '', date: l.date || '',
+    shape: l.shape || 'circle', markerColor: l.markerColor || null,
+    labelMode:        l.labelMode        || 'always',
+    labelPos:         l.labelPos         || 'right',
+    labelRound:       l.labelRound       ?? 4,
+    labelSize:        l.labelSize        ?? 11,
+    labelTextColor:   l.labelTextColor   || '#18181b',
+    labelBg:          l.labelBg          || '#ffffff',
+    labelBorderColor: l.labelBorderColor || null,
+    labelArrow:       l.labelArrow       ?? false,
+    labelOffsetX:     l.labelOffsetX     ?? 0,
+    labelOffsetY:     l.labelOffsetY     ?? 0,
+  };
 }
 
+// ── Location markers ──────────────────────────────────────────────────────────
+function markerIconHtml(loc) {
+  const color = loc.markerColor || '#89b4fa';
+  const shape = LOC_SHAPES[loc.shape || 'circle'];
+  return `<div style="width:12px;height:12px;background:${color};${shape.css}border:2px solid rgba(255,255,255,.8);box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer;"></div>`;
+}
+
+function buildTooltipStyles() {
+  let css = '';
+  locations.forEach((loc, i) => {
+    const mode = loc.labelMode || 'always';
+    if (mode === 'hidden') return;
+    const bg     = loc.labelBg          || '#ffffff';
+    const text   = loc.labelTextColor   || '#18181b';
+    const border = loc.labelBorderColor || loc.markerColor || '#89b4fa';
+    const round  = loc.labelRound       ?? 4;
+    const size   = loc.labelSize        ?? 11;
+    const ox     = loc.labelOffsetX     ?? 0;
+    const oy     = loc.labelOffsetY     ?? 0;
+    const arrow  = loc.labelArrow       ?? false;
+    const drag   = mode === 'always';
+    css += `.loc-tt-${i}{`
+         + `background:${bg}!important;color:${text}!important;`
+         + `border-color:${border}!important;border-radius:${round}px!important;`
+         + `font-size:${size}px!important;`
+         + `transform:translate(${ox}px,${oy}px);`
+         + (drag ? 'pointer-events:auto!important;cursor:grab;' : 'pointer-events:none!important;')
+         + `}\n`;
+    if (!arrow) {
+      css += `.loc-tt-${i}::before{display:none!important;}\n`;
+    } else {
+      css += `.leaflet-tooltip-right.loc-tt-${i}::before{border-right-color:${border}!important;}\n`;
+      css += `.leaflet-tooltip-left.loc-tt-${i}::before{border-left-color:${border}!important;}\n`;
+      css += `.leaflet-tooltip-top.loc-tt-${i}::before{border-top-color:${border}!important;}\n`;
+      css += `.leaflet-tooltip-bottom.loc-tt-${i}::before{border-bottom-color:${border}!important;}\n`;
+    }
+  });
+  let el = document.getElementById('loc-tt-styles');
+  if (!el) { el = document.createElement('style'); el.id = 'loc-tt-styles'; document.head.appendChild(el); }
+  el.textContent = css;
+}
+
+function addLocMarker(loc, locIdx) {
+  const icon = L.divIcon({
+    className: `loc-mk-${locIdx}`,
+    html: markerIconHtml(loc),
+    iconAnchor: [6, 6], iconSize: [12, 12],
+  });
+  const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
+  const mode = loc.labelMode || 'always';
+  if (mode !== 'hidden') {
+    marker.bindTooltip(loc.name, {
+      direction: loc.labelPos || 'right',
+      permanent: mode === 'always',
+      opacity: 1,
+      className: `loc-label-tt loc-tt-${locIdx}`,
+    });
+  }
+  marker.on('click', () => {
+    expandedLocIdx = expandedLocIdx === locIdx ? null : locIdx;
+    renderLocList();
+    setTimeout(() => {
+      const el = document.getElementById(`loc-item-${locIdx}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 30);
+  });
+  locMarkers.push({ marker });
+}
 function clearLocMarkers() {
-  locMarkers.forEach(({ marker, labelMkr }) => { map.removeLayer(marker); map.removeLayer(labelMkr); });
+  locMarkers.forEach(({ marker }) => map.removeLayer(marker));
   locMarkers = [];
 }
+function rebuildMarkers() {
+  clearLocMarkers();
+  buildTooltipStyles();
+  locations.forEach(addLocMarker);
+}
 
-// ── Render: sidebar lists ─────────────────────────────────────────────────────
+// ── Label drag ────────────────────────────────────────────────────────────────
+function enableLabelDrag() {
+  document.addEventListener('mousedown', e => {
+    const tt = e.target.closest('.loc-label-tt');
+    if (!tt) return;
+    const cls = [...tt.classList].find(c => /^loc-tt-\d+$/.test(c));
+    if (!cls) return;
+    const locIdx = parseInt(cls.replace('loc-tt-', ''), 10);
+    const loc = locations[locIdx];
+    if (!loc || (loc.labelMode || 'always') !== 'always') return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    map.dragging.disable();
+
+    const startX = e.clientX, startY = e.clientY;
+    const origOX = loc.labelOffsetX ?? 0, origOY = loc.labelOffsetY ?? 0;
+    let moved = false;
+
+    function onMove(e) {
+      moved = true;
+      tt.style.cursor = 'grabbing';
+      locations[locIdx].labelOffsetX = origOX + (e.clientX - startX);
+      locations[locIdx].labelOffsetY = origOY + (e.clientY - startY);
+      buildTooltipStyles();
+    }
+    function onUp(e) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      map.dragging.enable();
+      tt.style.cursor = '';
+      if (moved) { save(); e.stopPropagation(); }
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+// ── Next-mode buttons ─────────────────────────────────────────────────────────
+function renderNextModeBtns() {
+  document.getElementById('mode-row').style.display = locations.length > 0 ? 'flex' : 'none';
+  const c = document.getElementById('next-mode-btns');
+  c.innerHTML = '';
+  Object.entries(TYPE_EMOJI).forEach(([type, emoji]) => {
+    const btn = document.createElement('button');
+    btn.className = 'mode-btn' + (type === nextRouteType ? ' active' : '');
+    btn.textContent = emoji; btn.title = type;
+    btn.addEventListener('click', () => { nextRouteType = type; renderNextModeBtns(); });
+    c.appendChild(btn);
+  });
+}
+
+// ── Segment mode buttons ──────────────────────────────────────────────────────
+function makeSegmentModeBtns(routeIdx, currentType) {
+  const wrap = document.createElement('div');
+  wrap.className = 'mode-btns';
+  Object.entries(TYPE_EMOJI).forEach(([type, emoji]) => {
+    const btn = document.createElement('button');
+    btn.className = 'mode-btn' + (type === currentType ? ' active' : '');
+    btn.textContent = emoji; btn.title = type;
+    btn.addEventListener('click', async () => { await changeRouteType(routeIdx, type); });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+// ── Bulk route helpers ────────────────────────────────────────────────────────
+async function rebuildAllRoutes() {
+  routeLayers.forEach((_, i) => clearRouteLayer(i));
+  routeLayers = [];
+  for (let i = 0; i < routes.length; i++) await drawRoute(i);
+}
+
+// ── Style panel ───────────────────────────────────────────────────────────────
+const SOLID_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e8c','#ffffff','#888888','#000000'];
+
+function makeStylePanel(routeIdx, route) {
+  const panel = document.createElement('div');
+  panel.className = 'style-panel';
+  const typeMeta = ROUTE_META[route.type];
+
+  // — Color row (wraps) —
+  const colorRow = document.createElement('div');
+  colorRow.className = 'sp-row-wrap';
+  colorRow.innerHTML = '<span class="sp-label">Color</span>';
+
+  // Type-default swatch
+  const typeSwatch = document.createElement('div');
+  typeSwatch.className = 'swatch' + (route.color == null ? ' active' : '');
+  typeSwatch.style.background = typeMeta.color;
+  typeSwatch.title = 'Type default';
+  typeSwatch.addEventListener('click', async () => { routes[routeIdx].color = null; await redrawRoute(routeIdx); });
+  colorRow.appendChild(typeSwatch);
+
+  // Solid color swatches
+  SOLID_COLORS.forEach(hex => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (route.color === hex ? ' active' : '');
+    sw.style.background = hex; sw.title = hex;
+    sw.addEventListener('click', async () => { routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
+    colorRow.appendChild(sw);
+  });
+
+  // Custom color picker
+  const customWrap = document.createElement('div');
+  customWrap.className = 'swatch-custom'; customWrap.title = 'Custom color';
+  const customFill = document.createElement('div'); customFill.className = 'swatch-custom-fill';
+  const colorInput = document.createElement('input'); colorInput.type = 'color';
+  colorInput.value = route.color || typeMeta.color;
+  colorInput.addEventListener('input', async () => { routes[routeIdx].color = colorInput.value; await redrawRoute(routeIdx); });
+  customWrap.appendChild(customFill); customWrap.appendChild(colorInput);
+  colorRow.appendChild(customWrap);
+  panel.appendChild(colorRow);
+
+  // — Palette accordion: pick individual colors or apply whole palette to all —
+  const paletteSection = document.createElement('div');
+  paletteSection.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
+  // Mode toggle row
+  const palModeRow = document.createElement('div'); palModeRow.className = 'pal-mode-row';
+  const palLbl = document.createElement('span'); palLbl.className = 'sp-label'; palLbl.textContent = 'Palette';
+  const seqBtn = document.createElement('button');
+  seqBtn.className = 'sp-btn' + (paletteApplyMode === 'sequential' ? ' active' : '');
+  seqBtn.textContent = 'Sequential'; seqBtn.title = 'Assign palette colors in segment order';
+  seqBtn.addEventListener('click', () => { paletteApplyMode = 'sequential'; renderLocList(); });
+  const typeBtn = document.createElement('button');
+  typeBtn.className = 'sp-btn' + (paletteApplyMode === 'bytype' ? ' active' : '');
+  typeBtn.textContent = 'By type'; typeBtn.title = 'Assign one palette color per transport mode';
+  typeBtn.addEventListener('click', () => { paletteApplyMode = 'bytype'; renderLocList(); });
+  palModeRow.appendChild(palLbl); palModeRow.appendChild(seqBtn); palModeRow.appendChild(typeBtn);
+  paletteSection.appendChild(palModeRow);
+
+  const typeKeys = Object.keys(TYPE_EMOJI);
+
+  Object.entries(PALETTES).forEach(([name, colors]) => {
+    const entry = document.createElement('div'); entry.className = 'palette-entry';
+
+    // Header row: color strip + name + toggle arrow
+    const header = document.createElement('div');
+    header.className = 'palette-header' + (expandedPalette === name ? ' open' : '');
+
+    if (colors) {
+      const strip = document.createElement('div'); strip.className = 'palette-strip';
+      colors.forEach(c => { const s = document.createElement('span'); s.style.background = c; strip.appendChild(s); });
+      header.appendChild(strip);
+    }
+    const nameLbl = document.createElement('span'); nameLbl.className = 'palette-name'; nameLbl.textContent = name;
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'font-size:10px;color:var(--fg2);flex-shrink:0;';
+    arrow.textContent = expandedPalette === name ? '▲' : '▼';
+    header.appendChild(nameLbl); header.appendChild(arrow);
+
+    header.addEventListener('click', () => {
+      expandedPalette = expandedPalette === name ? null : name;
+      renderLocList();
+    });
+    entry.appendChild(header);
+
+    // Body: individual swatches + "Apply to all" button
+    const body = document.createElement('div');
+    body.className = 'palette-body' + (expandedPalette === name ? ' open' : '');
+
+    if (colors) {
+      const swatchRow = document.createElement('div'); swatchRow.className = 'palette-swatches';
+      colors.forEach(hex => {
+        const sw = document.createElement('div');
+        sw.className = 'swatch' + (route.color === hex ? ' active' : '');
+        sw.style.cssText = `background:${hex};width:20px;height:20px;`;
+        sw.title = hex;
+        sw.addEventListener('click', async () => { routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
+        swatchRow.appendChild(sw);
+      });
+      body.appendChild(swatchRow);
+    }
+
+    const applyAllBtn = document.createElement('button');
+    applyAllBtn.className = 'palette-apply';
+    applyAllBtn.textContent = colors ? 'Apply to all segments' : 'Reset all to type default';
+    applyAllBtn.addEventListener('click', async () => {
+      if (!colors) {
+        routes.forEach(r => { r.color = null; });
+      } else if (paletteApplyMode === 'bytype') {
+        routes.forEach(r => {
+          const ti = typeKeys.indexOf(r.type);
+          r.color = colors[(ti >= 0 ? ti : 0) % colors.length];
+        });
+      } else {
+        routes.forEach((r, i) => { r.color = colors[i % colors.length]; });
+      }
+      rebuildMarkers();
+      await rebuildAllRoutes();
+      renderLocList(); save();
+    });
+    body.appendChild(applyAllBtn);
+
+    entry.appendChild(body);
+    paletteSection.appendChild(entry);
+  });
+  panel.appendChild(paletteSection);
+
+  // — Dash row —
+  const dashRow = document.createElement('div');
+  dashRow.className = 'sp-row';
+  dashRow.innerHTML = '<span class="sp-label">Dash</span>';
+  const dashes = [
+    { key: 'default', label: '— ·' },
+    { key: 'solid',   label: '———' },
+    { key: 'dashed',  label: '– –' },
+    { key: 'dotted',  label: '· · ·' },
+  ];
+  dashes.forEach(({ key, label }) => {
+    const btn = document.createElement('button');
+    btn.className = 'sp-btn' + ((route.dash || 'default') === key ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', async () => { routes[routeIdx].dash = key; await redrawRoute(routeIdx); });
+    dashRow.appendChild(btn);
+  });
+  const dashAllBtn = document.createElement('button');
+  dashAllBtn.className = 'sp-all'; dashAllBtn.textContent = '↓ All';
+  dashAllBtn.title = 'Apply this dash style to all segments';
+  dashAllBtn.addEventListener('click', async () => {
+    const d = route.dash || 'default';
+    routes.forEach(r => { r.dash = d; });
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  dashRow.appendChild(dashAllBtn);
+  panel.appendChild(dashRow);
+
+  // — Width slider (1–10, null = auto = type default) —
+  const widthRow = document.createElement('div');
+  widthRow.className = 'sp-row';
+  widthRow.innerHTML = '<span class="sp-label">Width</span>';
+
+  const defaultWeight = typeMeta.weight;
+  const currentVal = route.weight ?? defaultWeight;
+
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 1; slider.max = 10; slider.step = 1;
+  slider.value = currentVal; slider.className = 'sp-slider';
+
+  const valLabel = document.createElement('span');
+  valLabel.className = 'sp-slider-val';
+  valLabel.textContent = route.weight == null ? `${defaultWeight} (auto)` : currentVal;
+
+  slider.addEventListener('input', () => {
+    const v = parseInt(slider.value);
+    valLabel.textContent = v === defaultWeight ? `${v} (auto)` : v;
+  });
+  slider.addEventListener('change', async () => {
+    const v = parseInt(slider.value);
+    routes[routeIdx].weight = v === defaultWeight ? null : v;
+    valLabel.textContent = routes[routeIdx].weight == null ? `${defaultWeight} (auto)` : v;
+    await redrawRoute(routeIdx);
+  });
+
+  const widthAllBtn = document.createElement('button');
+  widthAllBtn.className = 'sp-all'; widthAllBtn.textContent = '↓ All';
+  widthAllBtn.title = 'Apply this width to all segments';
+  widthAllBtn.addEventListener('click', async () => {
+    const v = parseInt(slider.value);
+    const w = v === defaultWeight ? null : v;
+    routes.forEach(r => { r.weight = w; });
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  widthRow.appendChild(slider); widthRow.appendChild(valLabel); widthRow.appendChild(widthAllBtn);
+  panel.appendChild(widthRow);
+
+  return panel;
+}
+
+async function redrawRoute(idx) {
+  clearRouteLayer(idx);
+  await drawRoute(idx);
+  renderLocList();
+  save();
+}
+
+// ── Location edit panel ───────────────────────────────────────────────────────
+const MARKER_COLORS = ['#89b4fa','#f38ba8','#a6e3a1','#f9e2af','#cba6f7','#fab387','#94e2d5','#74c7ec','#ffffff','#888888'];
+
+function makeLocEditPanel(locIdx) {
+  const loc = locations[locIdx];
+  const panel = document.createElement('div');
+  panel.className = 'loc-edit-panel';
+
+  // Name
+  const nameRow = document.createElement('div'); nameRow.className = 'lep-row';
+  nameRow.innerHTML = '<span class="lep-label">Name</span>';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text'; nameInput.className = 'lep-input'; nameInput.value = loc.name;
+  nameInput.addEventListener('change', () => {
+    const v = nameInput.value.trim(); if (!v) return;
+    locations[locIdx].name = v;
+    rebuildMarkers(); renderLocList(); save();
+  });
+  nameRow.appendChild(nameInput); panel.appendChild(nameRow);
+
+  // Notes
+  const notesRow = document.createElement('div'); notesRow.className = 'lep-row top';
+  notesRow.innerHTML = '<span class="lep-label">Notes</span>';
+  const notesInput = document.createElement('textarea');
+  notesInput.className = 'lep-input'; notesInput.value = loc.description || '';
+  notesInput.placeholder = 'Add notes…';
+  notesInput.addEventListener('change', () => { locations[locIdx].description = notesInput.value; save(); });
+  notesRow.appendChild(notesInput); panel.appendChild(notesRow);
+
+  // Date
+  const dateRow = document.createElement('div'); dateRow.className = 'lep-row';
+  dateRow.innerHTML = '<span class="lep-label">Date</span>';
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date'; dateInput.className = 'lep-input'; dateInput.value = loc.date || '';
+  dateInput.addEventListener('change', () => { locations[locIdx].date = dateInput.value; renderLocList(); save(); });
+  dateRow.appendChild(dateInput); panel.appendChild(dateRow);
+
+  // Shape
+  const shapeRow = document.createElement('div'); shapeRow.className = 'lep-row';
+  shapeRow.innerHTML = '<span class="lep-label">Shape</span>';
+  Object.entries(LOC_SHAPES).forEach(([key, { label }]) => {
+    const btn = document.createElement('button');
+    btn.className = 'shape-btn' + ((loc.shape || 'circle') === key ? ' active' : '');
+    btn.textContent = label; btn.title = key;
+    btn.addEventListener('click', () => { locations[locIdx].shape = key; rebuildMarkers(); renderLocList(); save(); });
+    shapeRow.appendChild(btn);
+  });
+  panel.appendChild(shapeRow);
+
+  // Marker color
+  const colorRow = document.createElement('div'); colorRow.className = 'lep-row';
+  colorRow.innerHTML = '<span class="lep-label">Color</span>';
+  MARKER_COLORS.forEach(hex => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + ((loc.markerColor || '#89b4fa') === hex ? ' active' : '');
+    sw.style.cssText = `background:${hex};width:17px;height:17px;`;
+    sw.title = hex;
+    sw.addEventListener('click', () => { locations[locIdx].markerColor = hex; rebuildMarkers(); renderLocList(); save(); });
+    colorRow.appendChild(sw);
+  });
+  const cWrap = document.createElement('div'); cWrap.className = 'swatch-custom'; cWrap.title = 'Custom';
+  const cFill = document.createElement('div'); cFill.className = 'swatch-custom-fill';
+  const cInput = document.createElement('input'); cInput.type = 'color';
+  cInput.value = loc.markerColor || '#89b4fa';
+  cInput.addEventListener('input', () => { locations[locIdx].markerColor = cInput.value; rebuildMarkers(); save(); });
+  cWrap.appendChild(cFill); cWrap.appendChild(cInput);
+  colorRow.appendChild(cWrap);
+  panel.appendChild(colorRow);
+
+  // ── Label section ────────────────────────────────────────────────────────────
+  const lblDivider = document.createElement('div');
+  lblDivider.style.cssText = 'border-top:1px solid var(--bg3);margin:2px 0;';
+  panel.appendChild(lblDivider);
+
+  // Mode
+  const lblModeRow = document.createElement('div'); lblModeRow.className = 'lep-row';
+  lblModeRow.innerHTML = '<span class="lep-label">Label</span>';
+  [['always','Always'],['hover','Hover'],['hidden','Hidden']].forEach(([m, txt]) => {
+    const btn = document.createElement('button');
+    btn.className = 'shape-btn' + ((loc.labelMode||'always')===m?' active':'');
+    btn.textContent = txt;
+    btn.addEventListener('click', () => { locations[locIdx].labelMode = m; rebuildMarkers(); renderLocList(); save(); });
+    lblModeRow.appendChild(btn);
+  });
+  panel.appendChild(lblModeRow);
+
+  // Position + Arrow toggle on same row
+  const lblPosRow = document.createElement('div'); lblPosRow.className = 'lep-row';
+  lblPosRow.innerHTML = '<span class="lep-label">Position</span>';
+  [['right','→'],['left','←'],['top','↑'],['bottom','↓']].forEach(([p, icon]) => {
+    const btn = document.createElement('button');
+    btn.className = 'shape-btn' + ((loc.labelPos||'right')===p?' active':'');
+    btn.textContent = icon; btn.title = p;
+    btn.addEventListener('click', () => { locations[locIdx].labelPos = p; rebuildMarkers(); renderLocList(); save(); });
+    lblPosRow.appendChild(btn);
+  });
+  // Spacer
+  const posSpacer = document.createElement('span'); posSpacer.style.flex = '1';
+  lblPosRow.appendChild(posSpacer);
+  // Arrow toggle
+  const arrowBtn = document.createElement('button');
+  arrowBtn.className = 'shape-btn' + ((loc.labelArrow ?? false) ? ' active' : '');
+  arrowBtn.textContent = '↗'; arrowBtn.title = 'Show arrow tip';
+  arrowBtn.addEventListener('click', () => {
+    locations[locIdx].labelArrow = !(loc.labelArrow ?? false);
+    buildTooltipStyles(); renderLocList(); save();
+  });
+  lblPosRow.appendChild(arrowBtn);
+  panel.appendChild(lblPosRow);
+
+  // Drag hint + Reset position
+  const dragRow = document.createElement('div'); dragRow.className = 'lep-row';
+  dragRow.innerHTML = '<span class="lep-label" style="color:var(--fg2);">Offset</span><span style="font-size:10px;color:var(--fg2);flex:1;">drag label to reposition</span>';
+  const resetBtn = document.createElement('button');
+  resetBtn.className = 'sp-btn'; resetBtn.textContent = 'Reset';
+  resetBtn.addEventListener('click', () => {
+    locations[locIdx].labelOffsetX = 0; locations[locIdx].labelOffsetY = 0;
+    buildTooltipStyles(); save();
+  });
+  dragRow.appendChild(resetBtn);
+  panel.appendChild(dragRow);
+
+  // Roundness slider
+  const roundRow = document.createElement('div'); roundRow.className = 'lep-row';
+  roundRow.innerHTML = '<span class="lep-label">Round</span>';
+  const roundSlider = document.createElement('input');
+  roundSlider.type='range'; roundSlider.min=0; roundSlider.max=20; roundSlider.step=1;
+  roundSlider.value = loc.labelRound ?? 4; roundSlider.className = 'sp-slider';
+  const roundVal = document.createElement('span'); roundVal.className = 'sp-slider-val';
+  roundVal.textContent = `${loc.labelRound ?? 4}px`;
+  roundSlider.addEventListener('input', () => { roundVal.textContent = `${roundSlider.value}px`; });
+  roundSlider.addEventListener('change', () => { locations[locIdx].labelRound = parseInt(roundSlider.value); buildTooltipStyles(); save(); });
+  roundRow.appendChild(roundSlider); roundRow.appendChild(roundVal);
+  panel.appendChild(roundRow);
+
+  // Font size slider
+  const lblSizeRow = document.createElement('div'); lblSizeRow.className = 'lep-row';
+  lblSizeRow.innerHTML = '<span class="lep-label">Size</span>';
+  const sizeSlider = document.createElement('input');
+  sizeSlider.type='range'; sizeSlider.min=8; sizeSlider.max=18; sizeSlider.step=1;
+  sizeSlider.value = loc.labelSize ?? 11; sizeSlider.className = 'sp-slider';
+  const sizeVal = document.createElement('span'); sizeVal.className = 'sp-slider-val';
+  sizeVal.textContent = `${loc.labelSize ?? 11}px`;
+  sizeSlider.addEventListener('input', () => { sizeVal.textContent = `${sizeSlider.value}px`; });
+  sizeSlider.addEventListener('change', () => { locations[locIdx].labelSize = parseInt(sizeSlider.value); buildTooltipStyles(); save(); });
+  lblSizeRow.appendChild(sizeSlider); lblSizeRow.appendChild(sizeVal);
+  panel.appendChild(lblSizeRow);
+
+  // Text / BG / Border color pickers
+  [
+    { key: 'labelTextColor',   label: 'Text',     def: '#18181b' },
+    { key: 'labelBg',          label: 'Label BG', def: '#ffffff' },
+    { key: 'labelBorderColor', label: 'Border',   def: loc.markerColor || '#89b4fa' },
+  ].forEach(({ key, label, def }) => {
+    const row = document.createElement('div'); row.className = 'lep-row';
+    row.innerHTML = `<span class="lep-label">${label}</span>`;
+    const inp = document.createElement('input'); inp.type = 'color';
+    inp.value = loc[key] || def;
+    inp.style.cssText = 'width:34px;height:24px;border:none;border-radius:5px;cursor:pointer;padding:1px;flex-shrink:0;';
+    inp.addEventListener('input', () => { locations[locIdx][key] = inp.value; buildTooltipStyles(); save(); });
+    row.appendChild(inp);
+    panel.appendChild(row);
+  });
+
+  // Apply all labels button
+  const lblAllRow = document.createElement('div'); lblAllRow.className = 'lep-row';
+  lblAllRow.style.justifyContent = 'flex-end';
+  const lblAllBtn = document.createElement('button');
+  lblAllBtn.className = 'palette-apply'; lblAllBtn.textContent = '↓ Apply label style to all stops';
+  lblAllBtn.addEventListener('click', () => {
+    const src = locations[locIdx];
+    const keys = ['labelMode','labelPos','labelRound','labelSize','labelTextColor','labelBg','labelBorderColor','labelArrow'];
+    locations.forEach((l, j) => { if (j !== locIdx) keys.forEach(k => { l[k] = src[k]; }); });
+    rebuildMarkers(); renderLocList(); save();
+  });
+  lblAllRow.appendChild(lblAllBtn);
+  panel.appendChild(lblAllRow);
+
+  return panel;
+}
+
+// ── Render location list ──────────────────────────────────────────────────────
 function renderLocList() {
+  renderNextModeBtns();
   const el = document.getElementById('loc-list');
   el.innerHTML = '';
+
   if (!locations.length) {
-    el.innerHTML = '<div style="color:var(--fg2);font-size:12px;text-align:center;padding:16px;">No locations yet.</div>';
+    el.innerHTML = '<div class="empty-hint">Search a place or click "Pick on map" to start your trip.</div>';
     return;
   }
+
   locations.forEach((loc, i) => {
+    if (i > 0) {
+      const r    = routes.find(r => r.fromIdx === i-1 && r.toIdx === i);
+      const rIdx = routes.indexOf(r);
+      const conn = document.createElement('div');
+      conn.className = 'connector';
+
+      // Top row: bar + mode buttons + style toggle
+      const row = document.createElement('div');
+      row.className = 'connector-row';
+      const bar = document.createElement('div');
+      bar.className = 'connector-bar';
+      row.appendChild(bar);
+      if (r) {
+        row.appendChild(makeSegmentModeBtns(rIdx, r.type));
+        const swatch = document.createElement('div');
+        swatch.style.cssText = `width:8px;height:8px;border-radius:50%;background:${r.color ?? ROUTE_META[r.type].color};flex-shrink:0;`;
+        row.appendChild(swatch);
+        const toggle = document.createElement('button');
+        toggle.className = 'style-toggle' + (expandedIdx === rIdx ? ' open' : '');
+        toggle.textContent = '✦'; toggle.title = 'Style segment';
+        toggle.addEventListener('click', () => {
+          expandedIdx = expandedIdx === rIdx ? null : rIdx;
+          expandedPalette = null;
+          renderLocList();
+        });
+        row.appendChild(toggle);
+      }
+      conn.appendChild(row);
+
+      // Style panel (expanded)
+      if (r && expandedIdx === rIdx) conn.appendChild(makeStylePanel(rIdx, r));
+
+      el.appendChild(conn);
+    }
+
     const item = document.createElement('div');
-    item.className = 'list-item';
+    item.className = 'list-item'; item.id = `loc-item-${i}`;
+    const sub = [loc.date, `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`].filter(Boolean).join(' · ');
     item.innerHTML =
-      `<div class="item-body">
+      `<div class="loc-num" style="background:${loc.markerColor||'var(--accent)'};">${i+1}</div>
+       <div class="item-body">
          <div class="item-name">${loc.name}</div>
-         <div class="item-sub">${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}</div>
+         <div class="item-sub">${sub}</div>
        </div>
-       <button class="btn-sm fly" title="Fly to">⌖</button>
-       <button class="btn-sm del" title="Delete">✕</button>`;
+       <button class="btn-sm edit" title="Edit">✎</button>
+       <button class="btn-sm fly"  title="Fly to">⌖</button>
+       <button class="btn-sm del"  title="Remove">✕</button>`;
+    item.querySelector('.edit').addEventListener('click', () => {
+      expandedLocIdx = expandedLocIdx === i ? null : i;
+      renderLocList();
+    });
     item.querySelector('.fly').addEventListener('click', () => map.flyTo([loc.lat, loc.lng], 10));
     item.querySelector('.del').addEventListener('click', () => deleteLocation(i));
     el.appendChild(item);
+
+    if (expandedLocIdx === i) el.appendChild(makeLocEditPanel(i));
   });
 }
 
-function renderRouteList() {
-  const el = document.getElementById('route-list');
-  el.innerHTML = '';
-  if (!routes.length) {
-    el.innerHTML = '<div style="color:var(--fg2);font-size:12px;text-align:center;padding:16px;">No routes yet.</div>';
-    return;
-  }
-  routes.forEach((r, i) => {
-    const from = locations[r.fromIdx];
-    const to   = locations[r.toIdx];
-    if (!from || !to) return;
-    const opts = polylineOpts(r);
-    const item = document.createElement('div');
-    item.className = 'list-item';
-    item.innerHTML =
-      `<span style="font-size:15px;">${TYPE_EMOJI[r.type]}</span>
-       <div class="route-swatch" style="background:${opts.color};${opts.dashArray ? `background:repeating-linear-gradient(90deg,${opts.color} 0,${opts.color} 6px,transparent 6px,transparent 10px)` : ''}"></div>
-       <div class="item-body">
-         <div class="item-name">${from.name} → ${to.name}</div>
-         <div class="item-sub">${r.type}${r.label ? ' · ' + r.label : ''}</div>
-       </div>
-       <button class="btn-sm del" title="Delete">✕</button>`;
-    item.querySelector('.del').addEventListener('click', () => deleteRoute(i));
-    el.appendChild(item);
-  });
-}
-
-function refreshRouteSelects() {
-  ['route-from', 'route-to'].forEach(id => {
-    const sel  = document.getElementById(id);
-    const prev = sel.value;
-    sel.innerHTML = locations.map((l, i) => `<option value="${i}">${l.name}</option>`).join('');
-    if (prev !== '') sel.value = prev;
-  });
-}
-
-// ── Delete ────────────────────────────────────────────────────────────────────
-function deleteLocation(idx) {
-  if (routes.some(r => r.fromIdx === idx || r.toIdx === idx) &&
-      !confirm('This location is used by a route. Delete anyway?')) return;
-
-  clearLocMarkers();
-  locations.splice(idx, 1);
-  routes = routes.filter(r => r.fromIdx !== idx && r.toIdx !== idx);
-  routes.forEach(r => {
-    if (r.fromIdx > idx) r.fromIdx--;
-    if (r.toIdx   > idx) r.toIdx--;
-  });
-  routeLayers = [];
-  locations.forEach(addLocMarker);
-  routes.forEach((_, i) => drawRoute(i));
-  renderLocList(); renderRouteList(); refreshRouteSelects(); save();
-}
-
-function deleteRoute(idx) {
+// ── Change route type ─────────────────────────────────────────────────────────
+async function changeRouteType(idx, newType) {
+  routes[idx].type = newType;
   clearRouteLayer(idx);
-  routeLayers.splice(idx, 1);
-  routes.splice(idx, 1);
-  renderRouteList(); save();
+  await drawRoute(idx);
+  renderLocList();
+  save();
 }
 
-// ── Fit ───────────────────────────────────────────────────────────────────────
+// ── Fit map ───────────────────────────────────────────────────────────────────
 function fitAll() {
   if (!locations.length) return;
   map.fitBounds(L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.15));
@@ -499,8 +1166,14 @@ function load() {
     const raw = localStorage.getItem('trip-mapper-v2');
     if (!raw) return;
     const d = JSON.parse(raw);
-    locations = d.locations || [];
-    routes    = d.routes    || [];
+    locations = (d.locations || []).map(normalizeLoc);
+    // Migrate old route format
+    routes = (d.routes || []).map(r => ({
+      fromIdx: r.fromIdx, toIdx: r.toIdx, type: r.type || 'car',
+      color:  r.color  ?? (r.colorMode === 'custom' ? r.customColor : null),
+      dash:   r.dash   ?? (r.style === 'solid' ? 'solid' : r.style === 'dashed' ? 'dashed' : r.style === 'dotted' ? 'dotted' : 'default'),
+      weight: r.weight ?? null,
+    }));
   } catch {}
 }
 
@@ -509,95 +1182,161 @@ async function rebuildAll() {
   clearLocMarkers();
   routeLayers.forEach((_, i) => clearRouteLayer(i));
   routeLayers = [];
+  buildTooltipStyles();
   locations.forEach(addLocMarker);
   for (let i = 0; i < routes.length; i++) await drawRoute(i);
-  renderLocList(); renderRouteList(); refreshRouteSelects();
-}
-
-// ── Map click ─────────────────────────────────────────────────────────────────
-map.on('click', e => {
-  document.getElementById('loc-lat').value = e.latlng.lat.toFixed(6);
-  document.getElementById('loc-lng').value = e.latlng.lng.toFixed(6);
-  activateTab('locations');
-});
-
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-function activateTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`));
-}
-document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => activateTab(b.dataset.tab)));
-
-// ── Theme ─────────────────────────────────────────────────────────────────────
-document.getElementById('theme-select').addEventListener('change', e => {
-  setTheme(e.target.value);
-  localStorage.setItem('trip-mapper-theme', e.target.value);
-});
-
-// ── Color mode toggle ─────────────────────────────────────────────────────────
-document.getElementById('route-color-mode').addEventListener('change', e => {
-  document.getElementById('route-color-pick').style.display =
-    e.target.value === 'custom' ? 'inline-block' : 'none';
-});
-
-// ── Add location ──────────────────────────────────────────────────────────────
-document.getElementById('btn-add-loc').addEventListener('click', () => {
-  const name = document.getElementById('loc-name').value.trim();
-  const lat  = parseFloat(document.getElementById('loc-lat').value);
-  const lng  = parseFloat(document.getElementById('loc-lng').value);
-  const note = document.getElementById('loc-note').value.trim();
-
-  if (!name)                    return alert('Enter a location name.');
-  if (isNaN(lat) || isNaN(lng)) return alert('Enter valid coordinates.');
-
-  const loc = { name, lat, lng, note };
-  locations.push(loc);
-  addLocMarker(loc);
-  fitAll();
   renderLocList();
-  refreshRouteSelects();
-  save();
+}
+
+// ── Add location with auto-route ──────────────────────────────────────────────
+function makeRoute(fromIdx, toIdx) {
+  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'default', weight: null };
+}
+
+async function addLocationAuto(name, lat, lng) {
+  const prevIdx = locations.length - 1;
+  const locIdx  = locations.length;
+  locations.push(normalizeLoc({ name, lat, lng }));
+  addLocMarker(locations[locIdx], locIdx);
+
+  if (prevIdx >= 0) {
+    const rIdx = routes.length;
+    routes.push(makeRoute(prevIdx, locIdx));
+    await drawRoute(rIdx);
+  }
+
+  fitAll(); renderLocList(); save();
   toast(`Added "${name}"`);
+}
 
-  ['loc-name','loc-lat','loc-lng','loc-note'].forEach(id => document.getElementById(id).value = '');
+// ── Delete location (chain reconnect) ─────────────────────────────────────────
+async function deleteLocation(idx) {
+  const hasPrev = idx > 0, hasNext = idx < locations.length - 1;
+  const nextR = routes.find(r => r.fromIdx === idx && r.toIdx === idx+1);
+  const prevR = routes.find(r => r.toIdx === idx && r.fromIdx === idx-1);
+  const reconnectType = (nextR || prevR)?.type || 'car';
+
+  clearLocMarkers();
+  routeLayers.forEach((_, i) => clearRouteLayer(i));
+  routeLayers = [];
+  expandedIdx = null;
+  expandedLocIdx = expandedLocIdx === idx ? null : expandedLocIdx > idx ? expandedLocIdx - 1 : expandedLocIdx;
+
+  locations.splice(idx, 1);
+  routes = routes.filter(r => r.fromIdx !== idx && r.toIdx !== idx);
+  routes.forEach(r => {
+    if (r.fromIdx > idx) r.fromIdx--;
+    if (r.toIdx   > idx) r.toIdx--;
+  });
+
+  if (hasPrev && hasNext) {
+    routes.push({ fromIdx: idx-1, toIdx: idx, type: reconnectType, color: null, dash: 'default', weight: null });
+    routes.sort((a, b) => a.fromIdx - b.fromIdx);
+  }
+
+  locations.forEach(addLocMarker);
+  for (let i = 0; i < routes.length; i++) await drawRoute(i);
+  renderLocList(); save();
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+let searchDebounce = null;
+
+function showSearchResults(results) {
+  const drop = document.getElementById('search-drop');
+  drop.innerHTML = '';
+  if (!results.length) {
+    drop.innerHTML = '<div class="s-item" style="cursor:default;color:var(--fg2);">No results found.</div>';
+    drop.style.display = 'flex'; return;
+  }
+  results.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 's-item';
+    item.innerHTML = `<div class="s-item-name">${r.name}</div><div class="s-item-sub">${r.displayName}</div>`;
+    item.addEventListener('click', () => {
+      drop.style.display = 'none';
+      document.getElementById('loc-search').value = '';
+      addLocationAuto(r.name, r.lat, r.lng);
+    });
+    drop.appendChild(item);
+  });
+  drop.style.display = 'flex';
+}
+
+async function doSearch() {
+  const q = document.getElementById('loc-search').value.trim(); if (!q) return;
+  const btn = document.getElementById('btn-search');
+  btn.textContent = '…'; btn.disabled = true;
+  try { showSearchResults(await geocodeSearch(q)); }
+  catch { toast('Search failed. Check your connection.'); }
+  btn.textContent = 'Go'; btn.disabled = false;
+}
+
+document.getElementById('loc-search').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+document.getElementById('loc-search').addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  const q = document.getElementById('loc-search').value.trim();
+  if (!q) { document.getElementById('search-drop').style.display = 'none'; return; }
+  searchDebounce = setTimeout(doSearch, 500);
+});
+document.getElementById('btn-search').addEventListener('click', doSearch);
+document.addEventListener('click', e => {
+  if (!e.target.closest('#search-drop') && !e.target.closest('#loc-search') && e.target.id !== 'btn-search')
+    document.getElementById('search-drop').style.display = 'none';
 });
 
-// ── Add route ─────────────────────────────────────────────────────────────────
-document.getElementById('btn-add-route').addEventListener('click', async () => {
-  if (locations.length < 2) return alert('Add at least 2 locations first.');
+// ── Pick on map ───────────────────────────────────────────────────────────────
+let pickMode = false;
 
-  const fromIdx     = parseInt(document.getElementById('route-from').value);
-  const toIdx       = parseInt(document.getElementById('route-to').value);
-  const type        = document.getElementById('route-type').value;
-  const colorMode   = document.getElementById('route-color-mode').value;
-  const customColor = document.getElementById('route-color-pick').value;
-  const style       = document.getElementById('route-style').value;
-  const label       = document.getElementById('route-label').value.trim();
+function enterPickMode() {
+  pickMode = true;
+  document.getElementById('map').classList.add('pick-mode');
+  const btn = document.getElementById('btn-pick-loc');
+  btn.textContent = '✕ Cancel pick';
+  btn.classList.remove('btn-green');
+  btn.classList.add('btn-red');
+  toast('Click anywhere on the map to place a stop.');
+}
 
-  if (fromIdx === toIdx) return alert('From and To must be different locations.');
+function exitPickMode() {
+  pickMode = false;
+  document.getElementById('map').classList.remove('pick-mode');
+  const btn = document.getElementById('btn-pick-loc');
+  btn.textContent = '📌 Pick on map';
+  btn.classList.remove('btn-red');
+  btn.classList.add('btn-green');
+  btn.disabled = false;
+}
 
-  const route = { fromIdx, toIdx, type, colorMode, customColor, style, label };
-  const idx   = routes.length;
-  routes.push(route);
-
-  const btn = document.getElementById('btn-add-route');
-  btn.textContent = 'Routing…'; btn.disabled = true;
-  await drawRoute(idx);
-  btn.textContent = 'Add Route'; btn.disabled = false;
-
-  renderRouteList();
-  save();
-  toast(`Added ${type} route: ${locations[fromIdx].name} → ${locations[toIdx].name}`);
-  document.getElementById('route-label').value = '';
+document.getElementById('btn-pick-loc').addEventListener('click', () => {
+  if (pickMode) { exitPickMode(); return; }
+  enterPickMode();
 });
 
-// ── Export ────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && pickMode) exitPickMode(); });
+
+map.on('click', async e => {
+  if (!pickMode) return;
+  exitPickMode();
+  const { lat, lng } = e.latlng;
+  const btn = document.getElementById('btn-pick-loc');
+  btn.textContent = '📌 Resolving…'; btn.disabled = true;
+  const name = await reverseGeocode(lat, lng);
+  btn.textContent = '📌 Pick on map'; btn.disabled = false;
+  await addLocationAuto(name, lat, lng);
+});
+
+// ── Map theme ─────────────────────────────────────────────────────────────────
+document.getElementById('theme-select').addEventListener('change', e => {
+  setMapTheme(e.target.value);
+  localStorage.setItem('trip-mapper-map-theme', e.target.value);
+});
+
+// ── Export / Import / Clear ───────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify({ locations, routes }, null, 2)], { type: 'application/json' });
   Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'trip-mapper.json' }).click();
 });
-
-// ── Import ────────────────────────────────────────────────────────────────────
 document.getElementById('btn-import').addEventListener('click', () => document.getElementById('file-input').click());
 document.getElementById('file-input').addEventListener('change', async e => {
   const file = e.target.files[0]; if (!file) return;
@@ -605,8 +1344,9 @@ document.getElementById('file-input').addEventListener('change', async e => {
   reader.onload = async ev => {
     try {
       const d = JSON.parse(ev.target.result);
-      locations = Array.isArray(d) ? d : (d.locations || []);
-      routes    = d.routes || [];
+      const rawLocs = Array.isArray(d) ? d : (d.locations || []);
+      locations = rawLocs.map(normalizeLoc);
+      routes = (d.routes || []).map(r => ({ fromIdx: r.fromIdx, toIdx: r.toIdx, type: r.type || 'car', color: r.color ?? null, dash: r.dash ?? 'default', weight: r.weight ?? null }));
       await rebuildAll(); fitAll(); save();
       toast('Imported successfully.');
     } catch { alert('Invalid JSON file.'); }
@@ -614,21 +1354,46 @@ document.getElementById('file-input').addEventListener('change', async e => {
   reader.readAsText(file);
   e.target.value = '';
 });
-
-// ── Clear all ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-clear').addEventListener('click', () => {
   if (!confirm('Delete all locations and routes?')) return;
   clearLocMarkers();
   routeLayers.forEach((_, i) => clearRouteLayer(i));
-  locations = []; routes = []; routeLayers = [];
-  renderLocList(); renderRouteList(); refreshRouteSelects(); save();
+  locations = []; routes = []; routeLayers = []; expandedIdx = null;
+  renderLocList(); save();
 });
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
-const savedTheme = localStorage.getItem('trip-mapper-theme') || 'voyager';
-document.getElementById('theme-select').value = savedTheme;
-setTheme(savedTheme);
+// ── Font ──────────────────────────────────────────────────────────────────────
+let _fontLink = null;
+function applyFont(name) {
+  const font = FONTS.find(f => f.name === name) || FONTS[0];
+  if (font.gf) {
+    if (!_fontLink) {
+      _fontLink = document.createElement('link');
+      _fontLink.rel = 'stylesheet'; document.head.appendChild(_fontLink);
+    }
+    _fontLink.href = `https://fonts.googleapis.com/css2?family=${font.gf}&display=swap`;
+  }
+  document.documentElement.style.setProperty('--font-family', font.stack);
+  localStorage.setItem('trip-mapper-font', name);
+}
+document.getElementById('font-select').addEventListener('change', e => applyFont(e.target.value));
 
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Populate font select
+FONTS.forEach(f => {
+  const opt = document.createElement('option'); opt.value = f.name; opt.textContent = f.name;
+  document.getElementById('font-select').appendChild(opt);
+});
+
+const savedUiTheme  = localStorage.getItem('trip-mapper-ui-theme')  || 'dark';
+const savedMapTheme = localStorage.getItem('trip-mapper-map-theme') || 'voyager';
+const savedFont     = localStorage.getItem('trip-mapper-font')      || 'System UI';
+applyUiTheme(savedUiTheme);
+document.getElementById('theme-select').value = savedMapTheme;
+setMapTheme(savedMapTheme);
+document.getElementById('font-select').value = savedFont;
+applyFont(savedFont);
+enableLabelDrag();
 load();
 rebuildAll().then(fitAll);
 </script>
