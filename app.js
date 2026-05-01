@@ -35,16 +35,16 @@ const NEUTRAL_COLOR = '#888888';
 
 // ── Font options ──────────────────────────────────────────────────────────────
 const FONTS = [
-  { name: 'Noto Sans KR',    stack: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif', gf: 'Noto+Sans+KR:wght@400;500;700;800' },
-  { name: 'JetBrains Mono',  stack: '"JetBrains Mono","Noto Sans KR","Fira Code",Consolas,monospace',             gf: 'JetBrains+Mono:wght@400;600;700;800' },
-  { name: 'System Sans',     stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif', gf: null },
-  { name: 'Serif',           stack: 'Georgia,"Times New Roman","Noto Serif KR",serif',                            gf: null },
-  { name: 'Monospace',       stack: 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans KR",monospace',        gf: null },
-  { name: 'Inter',           stack: '"Inter","Noto Sans KR",system-ui,sans-serif',                                gf: 'Inter:wght@400;600;700' },
-  { name: 'Roboto',          stack: '"Roboto","Noto Sans KR",system-ui,sans-serif',                               gf: 'Roboto:wght@400;700' },
-  { name: 'Nunito',          stack: '"Nunito","Noto Sans KR",system-ui,sans-serif',                               gf: 'Nunito:wght@400;600;700' },
-  { name: 'Merriweather',    stack: '"Merriweather","Noto Serif KR",Georgia,"Times New Roman",serif',            gf: 'Merriweather:wght@400;700' },
-  { name: 'Playfair',        stack: '"Playfair Display","Noto Serif KR",Georgia,"Times New Roman",serif',         gf: 'Playfair+Display:wght@400;700' },
+  { name: 'Noto Sans KR',    stack: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",var(--emoji-font-family),system-ui,sans-serif', gf: 'Noto+Sans+KR:wght@400;500;700;800' },
+  { name: 'JetBrains Mono',  stack: '"JetBrains Mono","Noto Sans KR",var(--emoji-font-family),"Fira Code",Consolas,monospace',             gf: 'JetBrains+Mono:wght@400;600;700;800' },
+  { name: 'System Sans',     stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",var(--emoji-font-family),sans-serif', gf: null },
+  { name: 'Serif',           stack: 'Georgia,"Times New Roman","Noto Serif KR",var(--emoji-font-family),serif',                            gf: null },
+  { name: 'Monospace',       stack: 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Noto Sans KR",var(--emoji-font-family),monospace',        gf: null },
+  { name: 'Inter',           stack: '"Inter","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                                gf: 'Inter:wght@400;600;700' },
+  { name: 'Roboto',          stack: '"Roboto","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                               gf: 'Roboto:wght@400;700' },
+  { name: 'Nunito',          stack: '"Nunito","Noto Sans KR",var(--emoji-font-family),system-ui,sans-serif',                               gf: 'Nunito:wght@400;600;700' },
+  { name: 'Merriweather',    stack: '"Merriweather","Noto Serif KR",var(--emoji-font-family),Georgia,"Times New Roman",serif',            gf: 'Merriweather:wght@400;700' },
+  { name: 'Playfair',        stack: '"Playfair Display","Noto Serif KR",var(--emoji-font-family),Georgia,"Times New Roman",serif',         gf: 'Playfair+Display:wght@400;700' },
 ];
 
 // ── Location shapes ───────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ let tileLayer = null;
 function setMapTheme(key) {
   const t = THEMES[key] || THEMES.voyager;
   if (tileLayer) map.removeLayer(tileLayer);
-  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: 19 }).addTo(map);
+  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19 }).addTo(map);
 }
 
 // ── UI Theme ──────────────────────────────────────────────────────────────────
@@ -183,6 +183,9 @@ function normalizeLoc(l) {
     name: l.name, lat: l.lat, lng: l.lng,
     description: l.description || '', date: l.date || '',
     shape: l.shape || 'circle', markerColor: l.markerColor || null,
+    markerSize: l.markerSize ?? 18,
+    markerShowNumber: l.markerShowNumber ?? true,
+    markerNumberColor: l.markerNumberColor || '#18181b',
     labelMode:        l.labelMode        || 'always',
     labelPos:         l.labelPos         || 'right',
     labelRound:       l.labelRound       ?? 4,
@@ -241,13 +244,31 @@ function markerIconHtml(loc) {
   const color = loc.markerColor || '#89b4fa';
   const shapeKey = loc.shape || 'circle';
   const shape = LOC_SHAPES[shapeKey];
-  const number = loc.visitNumber ?? '';
+  const number = loc.markerShowNumber === false ? '' : (loc.visitNumber ?? '');
+  const numberColor = loc.markerNumberColor || '#18181b';
+  const size = loc.markerSize ?? 18;
+  const fontSize = Math.max(8, Math.round(size * 0.5));
   const numberStyle = shapeKey === 'diamond' ? ' style="transform:rotate(-45deg);"' : '';
-  return `<div class="map-marker-shape" style="background:${color};${shape.css}"><span${numberStyle}>${number}</span></div>`;
+  return `<div class="map-marker-shape" style="width:${size}px;height:${size}px;font-size:${fontSize}px;background:${color};color:${numberColor};${shape.css}"><span${numberStyle}>${number}</span></div>`;
 }
 
 function locKey(loc) {
   return `${loc.lat.toFixed(6)},${loc.lng.toFixed(6)}`;
+}
+
+async function updateLocationPosition(locIdx, lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  locations[locIdx].lat = lat;
+  locations[locIdx].lng = lng;
+  await rebuildAll();
+  save();
+}
+
+async function updateLocationFromPlace(locIdx, place) {
+  if (!locations[locIdx] || !place) return;
+  locations[locIdx].name = place.name || locations[locIdx].name;
+  await updateLocationPosition(locIdx, place.lat, place.lng);
+  toast(`Updated stop ${locIdx + 1}`);
 }
 
 function buildTooltipStyles() {
@@ -316,7 +337,8 @@ function addLocMarker(loc, locIdx) {
   const icon = L.divIcon({
     className: `loc-mk-${locIdx}`,
     html: markerIconHtml(loc),
-    iconAnchor: [9, 9], iconSize: [18, 18],
+    iconAnchor: [(loc.markerSize ?? 18) / 2, (loc.markerSize ?? 18) / 2],
+    iconSize: [loc.markerSize ?? 18, loc.markerSize ?? 18],
   });
   const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
   const mode = loc.labelMode || 'always';
@@ -485,6 +507,7 @@ function makeStylePanel(routeIdx, route) {
   const panel = document.createElement('div');
   panel.className = 'style-panel';
   const typeMeta = ROUTE_META[route.type];
+  const currentRouteColor = () => route.color ?? typeMeta.color;
 
   // — Color row (wraps) —
   const colorRow = document.createElement('div');
@@ -517,6 +540,16 @@ function makeStylePanel(routeIdx, route) {
   colorInput.addEventListener('input', async () => { routes[routeIdx].color = colorInput.value; await redrawRoute(routeIdx); });
   customWrap.appendChild(customFill); customWrap.appendChild(colorInput);
   colorRow.appendChild(customWrap);
+  const colorAllBtn = document.createElement('button');
+  colorAllBtn.className = 'sp-all';
+  colorAllBtn.textContent = '↓ All';
+  colorAllBtn.title = 'Apply this segment color to every segment';
+  colorAllBtn.addEventListener('click', async () => {
+    const color = currentRouteColor();
+    routes.forEach(r => { r.color = color; });
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  colorRow.appendChild(colorAllBtn);
   panel.appendChild(colorRow);
 
   // — Palette accordion: pick individual colors or apply whole palette to all —
@@ -586,12 +619,14 @@ function makeStylePanel(routeIdx, route) {
 
     const applyAllBtn = document.createElement('button');
     applyAllBtn.className = 'palette-apply';
-    applyAllBtn.textContent = colors ? 'Apply to all segments' : 'Reset all to type default';
+    applyAllBtn.textContent = !colors ? 'Reset all to type default' :
+      paletteApplyMode === 'same' ? 'Apply selected color to all segments' : 'Apply to all segments';
     applyAllBtn.addEventListener('click', async () => {
       if (!colors) {
         routes.forEach(r => { r.color = null; });
       } else if (paletteApplyMode === 'same') {
-        routes.forEach(r => { r.color = colors[0]; });
+        const color = currentRouteColor();
+        routes.forEach(r => { r.color = color; });
       } else if (paletteApplyMode === 'bytype') {
         routes.forEach(r => {
           const ti = typeKeys.indexOf(r.type);
@@ -693,11 +728,24 @@ function applyMarkerColorToAll(color) {
   rebuildMarkers(); renderLocList(); save();
 }
 
-function applyMarkerPalette(colors) {
+function applyMarkerNumberStyleToAll(sourceLoc) {
+  locations.forEach(l => {
+    l.markerShowNumber = sourceLoc.markerShowNumber ?? true;
+    l.markerNumberColor = sourceLoc.markerNumberColor || '#18181b';
+  });
+  rebuildMarkers(); renderLocList(); save();
+}
+
+function applyMarkerSizeToAll(size) {
+  locations.forEach(l => { l.markerSize = size; });
+  rebuildMarkers(); renderLocList(); save();
+}
+
+function applyMarkerPalette(colors, selectedColor = colors[0]) {
   if (markerPaletteApplyMode === 'sequential') {
     locations.forEach((l, i) => { l.markerColor = colors[i % colors.length]; });
   } else {
-    locations.forEach(l => { l.markerColor = colors[0]; });
+    locations.forEach(l => { l.markerColor = selectedColor; });
   }
   rebuildMarkers(); renderLocList(); save();
 }
@@ -781,12 +829,15 @@ function makeMarkerPaletteControls(locIdx, loc) {
     });
     body.appendChild(swatchRow);
 
+    const selectedPaletteColor = () => colors.includes(locations[locIdx].markerColor)
+      ? locations[locIdx].markerColor
+      : colors[0];
     const applyBtn = document.createElement('button');
     applyBtn.className = 'palette-apply';
     applyBtn.textContent = markerPaletteApplyMode === 'sequential'
       ? 'Apply sequentially by visit order'
-      : 'Apply first color to all stops';
-    applyBtn.addEventListener('click', () => applyMarkerPalette(colors));
+      : 'Apply selected color to all stops';
+    applyBtn.addEventListener('click', () => applyMarkerPalette(colors, selectedPaletteColor()));
     body.appendChild(applyBtn);
 
     entry.appendChild(body);
@@ -832,6 +883,74 @@ function makeLocEditPanel(locIdx) {
   dateInput.addEventListener('change', () => { locations[locIdx].date = dateInput.value; renderLocList(); save(); });
   dateRow.appendChild(dateInput); panel.appendChild(dateRow);
 
+  // Coordinates
+  const coordRow = document.createElement('div'); coordRow.className = 'lep-row';
+  coordRow.innerHTML = '<span class="lep-label">Coords</span>';
+  const latInput = document.createElement('input');
+  latInput.type = 'number'; latInput.step = 'any'; latInput.className = 'lep-input'; latInput.value = loc.lat;
+  latInput.title = 'Latitude';
+  const lngInput = document.createElement('input');
+  lngInput.type = 'number'; lngInput.step = 'any'; lngInput.className = 'lep-input'; lngInput.value = loc.lng;
+  lngInput.title = 'Longitude';
+  const coordApplyBtn = document.createElement('button');
+  coordApplyBtn.className = 'sp-btn';
+  coordApplyBtn.textContent = 'Update';
+  coordApplyBtn.addEventListener('click', async () => {
+    await updateLocationPosition(locIdx, parseFloat(latInput.value), parseFloat(lngInput.value));
+  });
+  [latInput, lngInput].forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        coordApplyBtn.click();
+      }
+    });
+  });
+  coordRow.appendChild(latInput);
+  coordRow.appendChild(lngInput);
+  coordRow.appendChild(coordApplyBtn);
+  panel.appendChild(coordRow);
+
+  const moveRow = document.createElement('div');
+  moveRow.className = 'lep-row';
+  moveRow.innerHTML = '<span class="lep-label">Move</span>';
+  const moveSearchInput = document.createElement('input');
+  moveSearchInput.type = 'text';
+  moveSearchInput.className = 'lep-input';
+  moveSearchInput.placeholder = 'Search new place…';
+  const moveSearchBtn = document.createElement('button');
+  moveSearchBtn.className = 'sp-btn';
+  moveSearchBtn.textContent = 'Search';
+  moveSearchBtn.addEventListener('click', async () => {
+    const q = moveSearchInput.value.trim(); if (!q) return;
+    moveSearchBtn.textContent = '…'; moveSearchBtn.disabled = true;
+    try {
+      const results = await geocodeSearch(q);
+      if (!results.length) toast('No results found.');
+      else await updateLocationFromPlace(locIdx, results[0]);
+    } catch { toast('Search failed. Check your connection.'); }
+    moveSearchBtn.textContent = 'Search'; moveSearchBtn.disabled = false;
+  });
+  moveSearchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      moveSearchBtn.click();
+    }
+  });
+  moveRow.appendChild(moveSearchInput);
+  moveRow.appendChild(moveSearchBtn);
+  panel.appendChild(moveRow);
+
+  const movePickRow = document.createElement('div');
+  movePickRow.className = 'lep-row';
+  movePickRow.innerHTML = '<span class="lep-label"></span>';
+  const movePickBtn = document.createElement('button');
+  movePickBtn.className = 'sp-btn';
+  movePickBtn.textContent = 'Pick new point on map';
+  movePickBtn.addEventListener('click', () => enterPickMode(locIdx));
+  movePickRow.appendChild(movePickBtn);
+  panel.appendChild(movePickRow);
+
   // Shape
   const shapeRow = document.createElement('div'); shapeRow.className = 'lep-row';
   shapeRow.innerHTML = '<span class="lep-label">Shape</span>';
@@ -869,6 +988,68 @@ function makeLocEditPanel(locIdx) {
   colorAllBtn.addEventListener('click', () => applyMarkerColorToAll(locations[locIdx].markerColor || '#89b4fa'));
   colorRow.appendChild(colorAllBtn);
   panel.appendChild(colorRow);
+
+  const markerNumRow = document.createElement('div');
+  markerNumRow.className = 'pin-number-row';
+  const markerNumBtn = document.createElement('button');
+  markerNumBtn.className = 'pin-number-toggle' + ((loc.markerShowNumber ?? true) ? ' active' : '');
+  markerNumBtn.textContent = (loc.markerShowNumber ?? true) ? 'Pin numbers on' : 'Pin numbers off';
+  markerNumBtn.addEventListener('click', () => {
+    locations[locIdx].markerShowNumber = !(locations[locIdx].markerShowNumber ?? true);
+    rebuildMarkers(); renderLocList(); save();
+  });
+  const markerNumColor = document.createElement('input');
+  markerNumColor.type = 'color';
+  markerNumColor.value = loc.markerNumberColor || '#18181b';
+  markerNumColor.className = 'color-input';
+  markerNumColor.title = 'Pin number color';
+  markerNumColor.addEventListener('input', () => {
+    locations[locIdx].markerNumberColor = markerNumColor.value;
+    rebuildMarkers(); save();
+  });
+  const markerNumAllBtn = document.createElement('button');
+  markerNumAllBtn.className = 'sp-all';
+  markerNumAllBtn.textContent = '↓ All';
+  markerNumAllBtn.title = 'Apply this pin number setting to all stops';
+  markerNumAllBtn.addEventListener('click', () => applyMarkerNumberStyleToAll(locations[locIdx]));
+  const markerNumLabel = document.createElement('span');
+  markerNumLabel.className = 'pin-number-label';
+  markerNumLabel.textContent = 'Number color';
+  markerNumRow.appendChild(markerNumBtn);
+  markerNumRow.appendChild(markerNumLabel);
+  markerNumRow.appendChild(markerNumColor);
+  markerNumRow.appendChild(markerNumAllBtn);
+  panel.appendChild(markerNumRow);
+
+  const markerSizeRow = document.createElement('div');
+  markerSizeRow.className = 'lep-row';
+  markerSizeRow.innerHTML = '<span class="lep-label">Pin size</span>';
+  const markerSizeSlider = document.createElement('input');
+  markerSizeSlider.type = 'range';
+  markerSizeSlider.min = 10;
+  markerSizeSlider.max = 36;
+  markerSizeSlider.step = 1;
+  markerSizeSlider.value = loc.markerSize ?? 18;
+  markerSizeSlider.className = 'sp-slider';
+  const markerSizeVal = document.createElement('span');
+  markerSizeVal.className = 'sp-slider-val';
+  markerSizeVal.textContent = `${loc.markerSize ?? 18}px`;
+  markerSizeSlider.addEventListener('input', () => {
+    markerSizeVal.textContent = `${markerSizeSlider.value}px`;
+  });
+  markerSizeSlider.addEventListener('change', () => {
+    locations[locIdx].markerSize = parseInt(markerSizeSlider.value, 10);
+    rebuildMarkers(); save();
+  });
+  const markerSizeAllBtn = document.createElement('button');
+  markerSizeAllBtn.className = 'sp-all';
+  markerSizeAllBtn.textContent = '↓ All';
+  markerSizeAllBtn.title = 'Apply this pin size to all stops';
+  markerSizeAllBtn.addEventListener('click', () => applyMarkerSizeToAll(parseInt(markerSizeSlider.value, 10)));
+  markerSizeRow.appendChild(markerSizeSlider);
+  markerSizeRow.appendChild(markerSizeVal);
+  markerSizeRow.appendChild(markerSizeAllBtn);
+  panel.appendChild(markerSizeRow);
   panel.appendChild(makeMarkerPaletteControls(locIdx, loc));
 
   // ── Label section ────────────────────────────────────────────────────────────
@@ -892,7 +1073,7 @@ function makeLocEditPanel(locIdx) {
   const lblContentRow = document.createElement('div'); lblContentRow.className = 'lep-row';
   lblContentRow.innerHTML = '<span class="lep-label">Content</span>';
   [
-    ['labelShowNumber', '#'],
+    ['labelShowNumber', 'Number'],
     ['labelShowName', 'Name'],
     ['labelShowDate', 'Date'],
     ['labelShowNotes', 'Notes'],
@@ -997,7 +1178,7 @@ function makeLocEditPanel(locIdx) {
     const src = locations[locIdx];
     const keys = [
       'labelMode','labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
-      'labelPos','labelRound','labelSize','labelWidth','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
+      'labelPos','labelRound','labelSize','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
     ];
     locations.forEach((l, j) => { if (j !== locIdx) keys.forEach(k => { l[k] = src[k]; }); });
     rebuildMarkers(); renderLocList(); save();
@@ -1283,19 +1464,22 @@ document.addEventListener('click', e => {
 
 // ── Pick on map ───────────────────────────────────────────────────────────────
 let pickMode = false;
+let pickEditIdx = null;
 
-function enterPickMode() {
+function enterPickMode(editIdx = null) {
   pickMode = true;
+  pickEditIdx = Number.isInteger(editIdx) ? editIdx : null;
   document.getElementById('map').classList.add('pick-mode');
   const btn = document.getElementById('btn-pick-loc');
-  btn.textContent = '✕ Cancel pick';
+  btn.textContent = pickEditIdx == null ? '✕ Cancel pick' : `✕ Cancel move ${pickEditIdx + 1}`;
   btn.classList.remove('btn-green');
   btn.classList.add('btn-red');
-  toast('Click anywhere on the map to place a stop.');
+  toast(pickEditIdx == null ? 'Click anywhere on the map to place a stop.' : `Click the map to move stop ${pickEditIdx + 1}.`);
 }
 
 function exitPickMode() {
   pickMode = false;
+  pickEditIdx = null;
   document.getElementById('map').classList.remove('pick-mode');
   const btn = document.getElementById('btn-pick-loc');
   btn.textContent = '📌 Pick on map';
@@ -1313,13 +1497,18 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && pickMode) 
 
 map.on('click', async e => {
   if (!pickMode) return;
+  const editIdx = pickEditIdx;
   exitPickMode();
   const { lat, lng } = e.latlng;
   const btn = document.getElementById('btn-pick-loc');
   btn.textContent = '📌 Resolving…'; btn.disabled = true;
   const name = await reverseGeocode(lat, lng);
   btn.textContent = '📌 Pick on map'; btn.disabled = false;
-  await addLocationAuto(name, lat, lng);
+  if (editIdx == null) {
+    await addLocationAuto(name, lat, lng);
+  } else {
+    await updateLocationFromPlace(editIdx, { name, lat, lng });
+  }
 });
 
 // ── Map theme ─────────────────────────────────────────────────────────────────

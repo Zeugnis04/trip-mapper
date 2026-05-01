@@ -7,8 +7,9 @@ html, body, #app { height: 100%; overflow: hidden; font-family: var(--ui-font-fa
   --fg: #cdd6f4;  --fg2: #a6adc8;
   --accent: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8;
   --shadow: rgba(0,0,0,.4);
-  --ui-font-family: "JetBrains Mono","Noto Sans KR",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --label-font-family: "Noto Sans KR","JetBrains Mono",system-ui,sans-serif;
+  --emoji-font-family: "Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji","Segoe UI Symbol",emoji;
+  --ui-font-family: "JetBrains Mono","Noto Sans KR",var(--emoji-font-family),ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --label-font-family: "Noto Sans KR","JetBrains Mono",var(--emoji-font-family),system-ui,sans-serif;
 }
 :root[data-theme="light"] {
   --bg0: #f4f4f5; --bg1: #ffffff; --bg2: #e4e4e7; --bg3: #d4d4d8;
@@ -131,13 +132,12 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   display: flex; align-items: center; justify-content: center;
 }
 .map-marker-shape {
-  width: 18px; height: 18px;
   border: 2px solid rgba(255,255,255,.85);
   box-shadow: 0 1px 4px rgba(0,0,0,.4);
   color: #18181b;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 800; line-height: 1;
+  font-weight: 800; line-height: 1;
 }
 
 /* ── Timeline connector ── */
@@ -242,6 +242,26 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
   background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; margin-left: auto;
 }
 .sp-all:hover { background: var(--accent); color: #fff; }
+.color-input {
+  width: 34px; height: 24px; border: none; border-radius: 5px;
+  cursor: pointer; padding: 1px; flex-shrink: 0;
+}
+.pin-number-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--bg3);
+  border-radius: 6px;
+  background: var(--bg1);
+}
+.pin-number-toggle {
+  padding: 4px 8px; font-size: 11px; font-weight: 700;
+  border: none; border-radius: 5px; cursor: pointer;
+  background: var(--bg2); color: var(--fg2); flex-shrink: 0;
+}
+.pin-number-toggle.active { background: var(--accent); color: #fff; }
+.pin-number-label {
+  color: var(--fg2); font-size: 10px; flex: 1;
+}
 
 /* Palette apply-mode toggle */
 .pal-mode-row { display: flex; align-items: center; gap: 4px; }
@@ -348,6 +368,6 @@ input[type="date"].lep-input { color-scheme: dark; }
   font-size: 11px;
 }
 .label-content-btn {
-  min-width: 44px;
+  min-width: 56px;
   text-align: center;
 }
