@@ -64,9 +64,6 @@ const FONTS = [
   { name: 'Noto Sans KR',    stack: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",var(--emoji-font-family),system-ui,sans-serif', gf: 'Noto+Sans+KR:wght@400;500;700;800' },
   { name: 'Adobe Caslon',    stack: 'adobe-caslon-pro,"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),Georgia,"Times New Roman",serif', gf: null },
   { name: 'Noto Serif CJK',  stack: '"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),serif',                   gf: 'Noto+Serif+KR:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700' },
-  { name: 'Noto Serif KR',   stack: '"Noto Serif KR",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+KR:wght@400;500;600;700' },
-  { name: 'Noto Serif SC',   stack: '"Noto Serif SC",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+SC:wght@400;500;600;700' },
-  { name: 'Noto Serif TC',   stack: '"Noto Serif TC",var(--emoji-font-family),serif',                                                     gf: 'Noto+Serif+TC:wght@400;500;600;700' },
   { name: 'JetBrains Mono',  stack: '"JetBrains Mono","Noto Sans KR",var(--emoji-font-family),"Fira Code",Consolas,monospace',             gf: 'JetBrains+Mono:wght@400;600;700;800' },
   { name: 'System Sans',     stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",var(--emoji-font-family),sans-serif', gf: null },
   { name: 'Serif',           stack: 'Georgia,"Times New Roman","Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),serif', gf: null },
@@ -1604,6 +1601,21 @@ function normalizeRoute(r) {
   };
 }
 
+// ── Custom CSS ────────────────────────────────────────────────────────────────
+const _customCssEl = (() => {
+  const el = document.createElement('style'); el.id = 'trip-mapper-custom-css';
+  document.head.appendChild(el); return el;
+})();
+
+function applyCustomCss(css) {
+  _customCssEl.textContent = css || '';
+  localStorage.setItem('trip-mapper-custom-css', css || '');
+}
+
+function loadCustomCss() {
+  applyCustomCss(localStorage.getItem('trip-mapper-custom-css') || '');
+}
+
 function currentSettings() {
   return {
     uiTheme: document.documentElement.getAttribute('data-theme') || 'dark',
@@ -1882,6 +1894,25 @@ document.getElementById('embed-modal-close').addEventListener('click', closeEmbe
 document.getElementById('embed-close-btn').addEventListener('click', closeEmbedModal);
 embedModal.addEventListener('click', e => { if (e.target === embedModal) closeEmbedModal(); });
 
+// ── Custom CSS modal ──────────────────────────────────────────────────────────
+const cssModal    = document.getElementById('css-modal');
+const cssTextarea = document.getElementById('css-editor');
+
+document.getElementById('btn-css').addEventListener('click', () => {
+  cssTextarea.value = localStorage.getItem('trip-mapper-custom-css') || '';
+  cssModal.hidden = false;
+  cssTextarea.focus();
+});
+cssTextarea.addEventListener('input', () => applyCustomCss(cssTextarea.value));
+function closeCssModal() { cssModal.hidden = true; }
+document.getElementById('css-modal-close').addEventListener('click', closeCssModal);
+document.getElementById('css-close-btn').addEventListener('click', closeCssModal);
+cssModal.addEventListener('click', e => { if (e.target === cssModal) closeCssModal(); });
+document.getElementById('css-reset-btn').addEventListener('click', () => {
+  cssTextarea.value = '';
+  applyCustomCss('');
+});
+
 // ── Export / Import / Clear ───────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(makeTripData(), null, 2)], { type: 'application/json' });
@@ -1943,6 +1974,7 @@ async function boot() {
     map.keyboard.disable();
   }
 
+  loadCustomCss();
   applyTripSettings();
   if (!IS_EMBED) enableLabelDrag();
 

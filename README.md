@@ -51,9 +51,9 @@ The generated code looks like this:
 
 ### URL parameters reference
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `embed`   | `1`   | Hides the toolbar and sidebar, shows only the map. |
-| `static`  | `1`   | Freezes the map (no pan/zoom). Implies `embed=1`. |
-| `trip`    | URL   | Loads trip JSON from the given URL instead of localStorage. |
-| `data`    | base64 | Loads trip JSON encoded inline in the URL (set by the Embed button). |
+| Parameter | Value  | Description                                                         |
+|-----------|--------|---------------------------------------------------------------------|
+| `embed`   | `1`    | Hides the toolbar and sidebar, shows only the map.                  |
+| `static`  | `1`    | Freezes the map (no pan/zoom). Implies `embed=1`.                   |
+| `trip`    | URL    | Loads trip JSON from the given URL instead of localStorage.         |
+| `data`    | base64 | Loads trip JSON encoded inline in the URL (set by the Embed button).|

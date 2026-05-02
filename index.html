@@ -44,6 +44,7 @@
     <button class="btn btn-green"  id="btn-export">Export</button>
     <button class="btn btn-yellow" id="btn-import">Import</button>
     <button class="btn"            id="btn-embed">Embed</button>
+    <button class="btn"            id="btn-css">CSS</button>
     <button class="btn btn-red"    id="btn-clear">Clear</button>
     <input class="hidden-file-input" id="file-input" type="file" accept=".json" />
   </div>
@@ -93,6 +94,26 @@
     <div class="modal-footer">
       <button class="btn btn-accent" id="embed-copy-btn">Copy code</button>
       <button class="btn" id="embed-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom CSS modal -->
+<div id="css-modal" class="modal-overlay" hidden>
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <span class="modal-title">Custom CSS</span>
+      <button class="btn-icon modal-close" id="css-modal-close" title="Close">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-hint" style="margin-bottom:6px;">Changes apply live. Targets map labels, markers, routes, and any page element. Saved in your browser — not exported with trips.</p>
+      <textarea id="css-editor" class="embed-code css-editor-area" rows="16" spellcheck="false" placeholder=".leaflet-tooltip { font-size: 14px; }&#10;.map-marker-shape { border-radius: 0 !important; }"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-red" id="css-reset-btn">Clear</button>
+      <button class="btn" id="css-close-btn">Close</button>
     </div>
   </div>
 </div>
