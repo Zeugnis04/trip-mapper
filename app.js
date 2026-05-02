@@ -20,6 +20,24 @@ const ROUTE_META = {
   subway:  { color: '#9b59b6', dashArray: null,   weight: 4, routing: 'straight'     },
   train:   { color: '#c0392b', dashArray: null,   weight: 4, routing: 'straight'     },
 };
+
+// ── SVG icon library ──────────────────────────────────────────────────────────
+const ICONS = {
+  moon:    `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278z"/></svg>`,
+  sun:     `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707"/></svg>`,
+  pin:     `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M8 1a5 5 0 0 0-5 5c0 4 5 9 5 9s5-5 5-9a5 5 0 0 0-5-5m0 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3"/></svg>`,
+  edit:    `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1.5 14.5 4 5.5 13 2 14l1-3.5z"/><path d="M11 2.5l2.5 2.5"/></svg>`,
+  flyTo:   `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.5"/><line x1="8" y1="1" x2="8" y2="5"/><line x1="8" y1="11" x2="8" y2="15"/><line x1="1" y1="8" x2="5" y2="8"/><line x1="11" y1="8" x2="15" y2="8"/></svg>`,
+  del:     `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>`,
+  car:     `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M2.52 3.515A2.5 2.5 0 0 1 4.82 2h6.36c1 0 1.904.596 2.298 1.515l.792 1.848a.807.807 0 0 0 .381.404c.5.25.855.715.965 1.262l.335 1.679c.033.161.049.325.049.49v.413c0 .814-.39 1.543-1 1.997V13.5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-1.338c-1.292.048-2.745.088-4 .088s-2.708-.04-4-.088V13.5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1-.5-.5v-1.892c-.61-.454-1-1.183-1-1.997v-.413c0-.165.016-.329.049-.49l.335-1.68c.11-.546.465-1.012.964-1.261a.807.807 0 0 0 .381-.404zM3 10a1 1 0 1 0 2 0 1 1 0 0 0-2 0zm9 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>`,
+  walk:    `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M9.5 1.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0M6.44 3.752A.75.75 0 0 1 7 3.5h1.445c.742 0 1.32.643 1.243 1.38l-.43 4.083a1.8 1.8 0 0 1-.088.395l-.318.906.213.242a.75.75 0 0 1-.28 1.2l-.158.055A.75.75 0 0 1 8 13.5v1.75a.75.75 0 0 1-1.5 0V13.5a.75.75 0 0 1 .14-.442l.65-.929-.327-1.164-2.2 1.246a.75.75 0 0 1-.74-1.302l2.53-1.437.368-3.502L7 8.25V10a.75.75 0 0 1-1.5 0V8a.75.75 0 0 1 .44-.688l.5-.248"/></svg>`,
+  bicycle: `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M4 4.5a.5.5 0 0 1 .5-.5H6a.5.5 0 0 1 0 1v.5h4.14l.386-1.158A.5.5 0 0 1 11 4h1a.5.5 0 0 1 0 1h-.64l-.444 1.332A2.5 2.5 0 1 1 9.5 7.5l-.002-.068L8.75 6H5.614l-.39 1.17A2.5 2.5 0 1 1 2.5 7.5a2.5 2.5 0 0 1 2.395 1.786L4.5 8.5H5v-.5A.5.5 0 0 1 4.5 8H4a.5.5 0 0 1-.5-.5zm5.5 1-.386 1.158A2.5 2.5 0 0 1 11.5 6zm-7 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3"/></svg>`,
+  flight:  `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6.428 1.151C6.708.591 7.213 0 8 0s1.292.592 1.572 1.151C9.861 1.73 10 2.431 10 3v3.691l5.17 2.585a1.5 1.5 0 0 1 .83 1.342V12a.5.5 0 0 1-.582.493l-5.507-.918-.375 2.253 1.318 1.318A.5.5 0 0 1 10.5 16h-5a.5.5 0 0 1-.354-.854l1.319-1.318-.376-2.253-5.507.918A.5.5 0 0 1 0 12v-1.382a1.5 1.5 0 0 1 .83-1.342L6 6.691V3c0-.568.14-1.271.428-1.849z"/></svg>`,
+  ferry:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 1.5 3.5 5h9zm-6 4h12v5H2zm0 6q2-1.5 4 0t4 0 4 0v1.5q-2-1.5-4 0t-4 0-4 0z"/></svg>`,
+  subway:  `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M3 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8H3zm2 1v2h2.5V3zm3.5 0v2H11V3zm-3.5 3v2h6V6zM2 11h12l1 3H1zm3 1.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm6 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/></svg>`,
+  train:   `<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M3 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7.5H3zm2 1v3h2.5V3zm3.5 0v3H11V3zM2 10.5h12l1.5 4h-15zm3 2a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm6 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/></svg>`,
+};
+
 const TYPE_EMOJI = { car:'🚗', walk:'🚶', bicycle:'🚲', flight:'✈️', ferry:'⛴️', subway:'🚇', train:'🚆' };
 
 // ── Color palettes ────────────────────────────────────────────────────────────
@@ -83,7 +101,8 @@ let markerPaletteApplyMode = 'all'; // 'all' | 'sequential'
 const paletteOrder = {};
 const panelScrollPositions = {};
 const URL_PARAMS = new URLSearchParams(window.location.search);
-const IS_EMBED = URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('embed') === 'true';
+const IS_STATIC = URL_PARAMS.get('static') === '1';
+const IS_EMBED  = IS_STATIC || URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('embed') === 'true';
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 const map = L.map('map').setView([20, 0], 2);
@@ -97,7 +116,7 @@ function setMapTheme(key) {
 // ── UI Theme ──────────────────────────────────────────────────────────────────
 function applyUiTheme(theme, { persist = true } = {}) {
   document.documentElement.setAttribute('data-theme', theme);
-  document.getElementById('btn-ui-theme').textContent = theme === 'dark' ? '🌙' : '☀️';
+  document.getElementById('btn-ui-theme').innerHTML = theme === 'dark' ? ICONS.moon : ICONS.sun;
   if (persist) localStorage.setItem('trip-mapper-ui-theme', theme);
 }
 document.getElementById('btn-ui-theme').addEventListener('click', () => {
@@ -1529,9 +1548,9 @@ function renderLocList() {
          <div class="item-name">${loc.name}</div>
          <div class="item-sub">${sub}</div>
        </div>
-       <button class="btn-sm edit" title="Edit">✎</button>
-       <button class="btn-sm fly"  title="Fly to">⌖</button>
-       <button class="btn-sm del"  title="Remove">✕</button>`;
+       <button class="btn-sm edit" title="Edit">${ICONS.edit}</button>
+       <button class="btn-sm fly"  title="Fly to">${ICONS.flyTo}</button>
+       <button class="btn-sm del"  title="Remove">${ICONS.del}</button>`;
     item.querySelector('.edit').addEventListener('click', () => {
       expandedLocIdx = expandedLocIdx === i ? null : i;
       renderLocList();
@@ -1563,6 +1582,7 @@ async function changeRouteType(idx, newType) {
 // ── Fit map ───────────────────────────────────────────────────────────────────
 function fitAll() {
   if (!locations.length) return;
+  map.invalidateSize();
   const bounds = L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.22);
   map.fitBounds(bounds, { maxZoom: 12 });
 }
@@ -1768,7 +1788,7 @@ function enterPickMode(editIdx = null) {
   pickEditIdx = Number.isInteger(editIdx) ? editIdx : null;
   document.getElementById('map').classList.add('pick-mode');
   const btn = document.getElementById('btn-pick-loc');
-  btn.textContent = pickEditIdx == null ? '✕ Cancel pick' : `✕ Cancel move ${pickEditIdx + 1}`;
+  btn.innerHTML = pickEditIdx == null ? `${ICONS.del} Cancel pick` : `${ICONS.del} Cancel move ${pickEditIdx + 1}`;
   btn.classList.remove('btn-green');
   btn.classList.add('btn-red');
   toast(pickEditIdx == null ? 'Click anywhere on the map to place a stop.' : `Click the map to move stop ${pickEditIdx + 1}.`);
@@ -1779,7 +1799,7 @@ function exitPickMode() {
   pickEditIdx = null;
   document.getElementById('map').classList.remove('pick-mode');
   const btn = document.getElementById('btn-pick-loc');
-  btn.textContent = '📌 Pick on map';
+  btn.innerHTML = `${ICONS.pin} Pick on map`;
   btn.classList.remove('btn-red');
   btn.classList.add('btn-green');
   btn.disabled = false;
@@ -1798,9 +1818,9 @@ map.on('click', async e => {
   exitPickMode();
   const { lat, lng } = e.latlng;
   const btn = document.getElementById('btn-pick-loc');
-  btn.textContent = '📌 Resolving…'; btn.disabled = true;
+  btn.innerHTML = `${ICONS.pin} Resolving…`; btn.disabled = true;
   const name = await reverseGeocode(lat, lng);
-  btn.textContent = '📌 Pick on map'; btn.disabled = false;
+  btn.innerHTML = `${ICONS.pin} Pick on map`; btn.disabled = false;
   if (editIdx == null) {
     await addLocationAuto(name, lat, lng);
   } else {
@@ -1813,6 +1833,54 @@ document.getElementById('theme-select').addEventListener('change', e => {
   setMapTheme(e.target.value);
   localStorage.setItem('trip-mapper-map-theme', e.target.value);
 });
+
+// ── Static embed modal ────────────────────────────────────────────────────────
+const embedModal    = document.getElementById('embed-modal');
+const embedPathIn   = document.getElementById('embed-json-path');
+const embedCodeArea = document.getElementById('embed-code');
+const embedWarn     = document.getElementById('embed-warn');
+
+function buildEmbedCode() {
+  const jsonPath = embedPathIn.value.trim();
+  const base     = `${location.origin}${location.pathname}`;
+  let src, warn = '';
+
+  if (jsonPath) {
+    const tripUrl = jsonPath.startsWith('http') ? jsonPath : `${location.origin}/${jsonPath.replace(/^\//, '')}`;
+    src = `${base}?embed=1&static=1&trip=${encodeURIComponent(tripUrl)}`;
+  } else {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(makeTripData()))))
+                  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    src = `${base}?embed=1&static=1&data=${b64}`;
+    if (src.length > 8000) warn = `URL is ${src.length} chars — too large for most browsers. Export JSON, host it, and enter the path above.`;
+  }
+
+  embedWarn.textContent = warn;
+  embedWarn.hidden = !warn;
+  embedCodeArea.value =
+`<iframe
+  src="${src}"
+  width="800" height="500"
+  style="border:none;border-radius:8px;"
+  loading="lazy"
+></iframe>`;
+}
+
+document.getElementById('btn-embed').addEventListener('click', () => {
+  embedPathIn.value = '';
+  buildEmbedCode();
+  embedModal.hidden = false;
+});
+embedPathIn.addEventListener('input', buildEmbedCode);
+document.getElementById('embed-copy-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(embedCodeArea.value)
+    .then(() => toast('Embed code copied!'))
+    .catch(() => { embedCodeArea.select(); document.execCommand('copy'); toast('Embed code copied!'); });
+});
+function closeEmbedModal() { embedModal.hidden = true; }
+document.getElementById('embed-modal-close').addEventListener('click', closeEmbedModal);
+document.getElementById('embed-close-btn').addEventListener('click', closeEmbedModal);
+embedModal.addEventListener('click', e => { if (e.target === embedModal) closeEmbedModal(); });
 
 // ── Export / Import / Clear ───────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -1865,13 +1933,28 @@ FONTS.forEach(f => {
 
 async function boot() {
   if (IS_EMBED) document.body.classList.add('embed-mode');
+  if (IS_STATIC) {
+    document.body.classList.add('static-mode');
+    map.dragging.disable();
+    map.touchZoom.disable();
+    map.doubleClickZoom.disable();
+    map.scrollWheelZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+  }
 
   applyTripSettings();
   if (!IS_EMBED) enableLabelDrag();
 
-  const tripUrl = URL_PARAMS.get('trip');
+  const tripUrl  = URL_PARAMS.get('trip');
+  const tripData = URL_PARAMS.get('data');
   if (tripUrl) {
     await loadTripFromUrl(tripUrl);
+  } else if (tripData) {
+    try {
+      const json = JSON.parse(decodeURIComponent(escape(atob(tripData.replace(/-/g, '+').replace(/_/g, '/')))));
+      await applyTripData(json, { persist: false });
+    } catch { toast('Could not decode embedded trip data.'); await rebuildAll(); fitAll(); }
   } else {
     load();
     await rebuildAll();

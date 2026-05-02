@@ -28,7 +28,7 @@
   <div id="topbar">
     <h1>Trip Mapper</h1>
     <!-- UI theme toggle -->
-    <button class="btn-icon" id="btn-ui-theme" title="Toggle light/dark">🌙</button>
+    <button class="btn-icon" id="btn-ui-theme" title="Toggle light/dark"></button>
     <div class="toolbar-divider"></div>
     <label class="toolbar-label">Map</label>
     <select class="toolbar-select" id="theme-select">
@@ -43,6 +43,7 @@
     <div class="toolbar-spacer"></div>
     <button class="btn btn-green"  id="btn-export">Export</button>
     <button class="btn btn-yellow" id="btn-import">Import</button>
+    <button class="btn"            id="btn-embed">Embed</button>
     <button class="btn btn-red"    id="btn-clear">Clear</button>
     <input class="hidden-file-input" id="file-input" type="file" accept=".json" />
   </div>
@@ -59,7 +60,7 @@
           <button class="btn btn-accent btn-search" id="btn-search">Go</button>
         </div>
         <div id="search-drop"></div>
-        <button class="btn btn-green btn-full" id="btn-pick-loc">📌 Pick on map</button>
+        <button class="btn btn-green btn-full" id="btn-pick-loc">Pick on map</button>
       </div>
       <div class="item-list" id="loc-list"></div>
     </div>
@@ -67,6 +68,34 @@
   </div>
 </div>
 <div id="toast"></div>
+
+<!-- Embed modal -->
+<div id="embed-modal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Embed static map</span>
+      <button class="btn-icon modal-close" id="embed-modal-close" title="Close">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label">
+        Hosted JSON path
+        <span class="modal-hint">optional — leave blank for self-contained URL</span>
+      </label>
+      <input type="text" id="embed-json-path" placeholder="/trips/my-trip.json  or  https://…/trip.json" />
+      <div class="modal-warn" id="embed-warn" hidden></div>
+      <label class="modal-label" style="margin-top:10px">
+        Embed code
+      </label>
+      <textarea id="embed-code" class="embed-code" readonly rows="5" spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-accent" id="embed-copy-btn">Copy code</button>
+      <button class="btn" id="embed-close-btn">Close</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
