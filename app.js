@@ -2072,6 +2072,26 @@ function makeBulkLocPanel(idxs) {
     gapRow.appendChild(gapSlider); gapRow.appendChild(gapVal); panel.appendChild(gapRow);
   }
 
+  // Number size (# size) — scales the digit on the pin and in the label
+  const numSizeRow = document.createElement('div'); numSizeRow.className = 'sp-row';
+  numSizeRow.innerHTML = '<span class="lep-label"># size</span>';
+  const numSlider = document.createElement('input');
+  numSlider.type = 'range'; numSlider.min = 20; numSlider.max = 400; numSlider.step = 5;
+  numSlider.value = first.labelNumberSize ?? 85; numSlider.className = 'sp-slider';
+  const numSliderVal = document.createElement('span'); numSliderVal.className = 'sp-slider-val'; numSliderVal.textContent = `${first.labelNumberSize ?? 85}%`;
+  numSlider.addEventListener('input', () => { numSliderVal.textContent = `${numSlider.value}%`; });
+  numSlider.addEventListener('change', () => { const v = parseInt(numSlider.value, 10); apply(l => { l.labelNumberSize = v; }); refreshMarkersOnly(); });
+  numSizeRow.appendChild(numSlider); numSizeRow.appendChild(numSliderVal); panel.appendChild(numSizeRow);
+
+  // Number color (pin digit + label number)
+  const numColorRow = document.createElement('div'); numColorRow.className = 'sp-row';
+  numColorRow.innerHTML = '<span class="lep-label"># color</span>';
+  const nc = document.createElement('input'); nc.type = 'color';
+  nc.value = first.markerNumberColor || '#18181b';
+  nc.style.cssText = 'width:34px;height:24px;border:none;border-radius:5px;cursor:pointer;padding:1px;flex-shrink:0;';
+  nc.addEventListener('input', () => { apply(l => { l.markerNumberColor = nc.value; l.labelNumberColor = nc.value; }); refreshMarkersOnly(); });
+  numColorRow.appendChild(nc); panel.appendChild(numColorRow);
+
   const modeRow = document.createElement('div'); modeRow.className = 'sp-row';
   modeRow.innerHTML = '<span class="lep-label">Label</span>';
   [['always', 'Always'], ['hover', 'Hover'], ['hidden', 'Hidden']].forEach(([key, label]) => {
