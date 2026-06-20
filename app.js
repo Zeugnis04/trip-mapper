@@ -8,6 +8,11 @@ const THEMES = {
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
   osm:     { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors', sub: 'abc' },
+  // Minimal, label-free basemaps — closest keyless option to a plain outline map.
+  light_min: { url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+               attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
+  dark_min:  { url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+               attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
 };
 
 // ── Route type metadata ───────────────────────────────────────────────────────
@@ -59,10 +64,147 @@ const PALETTES = {
 };
 const NEUTRAL_COLOR = '#888888';
 
+// ── Custom palettes ───────────────────────────────────────────────────────────
+// User-defined palettes, persisted and merged into the built-ins for both pins
+// and routes. Shape: [{ name, colors: ['#rrggbb', …] }].
+let customPalettes = [];
+function loadCustomPalettes() {
+  try {
+    const v = JSON.parse(localStorage.getItem('trip-mapper-custom-palettes') || '[]');
+    customPalettes = Array.isArray(v) ? v.filter(p => p && p.name && Array.isArray(p.colors)) : [];
+  } catch { customPalettes = []; }
+}
+function saveCustomPalettes() {
+  localStorage.setItem('trip-mapper-custom-palettes', JSON.stringify(customPalettes));
+}
+// Built-ins first, then custom (custom can override a built-in by using its name).
+function allPalettes() {
+  const o = { ...PALETTES };
+  customPalettes.forEach(p => { if (p.colors.length) o[p.name] = p.colors; });
+  return o;
+}
+function getPaletteColors(name) {
+  if (name in PALETTES) return PALETTES[name];
+  const c = customPalettes.find(p => p.name === name);
+  return c ? c.colors : null;
+}
+
+// Mode-of-transport emoji controls (global: applies to every route), shown in the
+// route style panel. Off by default; size is S/M/L/XL. Persisted.
+function makeRouteEmojiRow() {
+  const row = document.createElement('div');
+  row.className = 'sp-row';
+  row.innerHTML = '<span class="sp-label">Emoji</span>';
+
+  const toggle = document.createElement('button');
+  toggle.className = 'sp-btn' + (showRouteEmoji ? ' active' : '');
+  toggle.textContent = showRouteEmoji ? 'On' : 'Off';
+  toggle.title = 'Show the transport emoji at the middle of every route';
+  toggle.addEventListener('click', async () => {
+    showRouteEmoji = !showRouteEmoji;
+    localStorage.setItem('trip-mapper-route-emoji', showRouteEmoji ? '1' : '0');
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  row.appendChild(toggle);
+
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 8; slider.max = 80; slider.step = 1;
+  slider.value = routeEmojiSize; slider.className = 'sp-slider';
+  const val = document.createElement('span');
+  val.className = 'sp-slider-val'; val.textContent = `${routeEmojiSize}px`;
+  slider.addEventListener('input', () => { val.textContent = `${slider.value}px`; });
+  slider.addEventListener('change', async () => {
+    routeEmojiSize = parseInt(slider.value, 10);
+    localStorage.setItem('trip-mapper-route-emoji-size', String(routeEmojiSize));
+    if (showRouteEmoji) await rebuildAllRoutes();
+    save();
+  });
+  row.appendChild(slider); row.appendChild(val);
+  return row;
+}
+
+// Button shown in each palette section that opens the custom-palette editor.
+function makeManagePalettesBtn() {
+  const btn = document.createElement('button');
+  btn.className = 'palette-apply';
+  btn.textContent = `✎ Custom palettes${customPalettes.length ? ` (${customPalettes.length})` : ''}`;
+  btn.addEventListener('click', openPalettesModal);
+  return btn;
+}
+function openPalettesModal() {
+  renderPalettesEditor();
+  document.getElementById('palettes-modal').hidden = false;
+}
+function closePalettesModal() {
+  document.getElementById('palettes-modal').hidden = true;
+  saveCustomPalettes();
+  renderLocList();   // reflect new/edited palettes in any open palette list
+}
+// Parse a comma/space/newline-separated list of hex codes (# optional) into
+// normalized #rgb/#rrggbb colors, dropping anything invalid.
+function parseColorList(str) {
+  return (str || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean).map(s => {
+    const c = s.startsWith('#') ? s : '#' + s;
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : null;
+  }).filter(Boolean);
+}
+function renderPalettesEditor() {
+  const host = document.getElementById('palettes-editor');
+  host.innerHTML = '';
+  if (!customPalettes.length) {
+    const empty = document.createElement('div');
+    empty.className = 'modal-hint';
+    empty.textContent = 'No custom palettes yet — click “+ New palette”.';
+    host.appendChild(empty);
+  }
+  customPalettes.forEach((pal, pi) => {
+    const card = document.createElement('div'); card.className = 'cpal-card';
+
+    const head = document.createElement('div'); head.className = 'cpal-head';
+    const name = document.createElement('input');
+    name.type = 'text'; name.className = 'lep-input'; name.value = pal.name;
+    name.addEventListener('change', () => { pal.name = name.value.trim() || pal.name; name.value = pal.name; saveCustomPalettes(); });
+    const del = document.createElement('button');
+    del.className = 'btn btn-red'; del.textContent = 'Delete';
+    del.addEventListener('click', () => { customPalettes.splice(pi, 1); saveCustomPalettes(); renderPalettesEditor(); });
+    head.appendChild(name); head.appendChild(del);
+    card.appendChild(head);
+
+    // Quick entry: type/paste color codes separated by commas.
+    const bulk = document.createElement('input');
+    bulk.type = 'text'; bulk.className = 'lep-input'; bulk.value = pal.colors.join(', ');
+    bulk.placeholder = '#ff0000, #00ff00, 0000ff …';
+    bulk.title = 'Comma-separated hex codes (# optional)';
+    bulk.addEventListener('change', () => {
+      const parsed = parseColorList(bulk.value);
+      if (!parsed.length) { toast('No valid color codes found.'); bulk.value = pal.colors.join(', '); return; }
+      pal.colors = parsed;
+      saveCustomPalettes(); renderPalettesEditor();
+    });
+    card.appendChild(bulk);
+
+    const colors = document.createElement('div'); colors.className = 'cpal-colors';
+    pal.colors.forEach((hex, ci) => {
+      const wrap = document.createElement('div'); wrap.className = 'cpal-swatch';
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = hex;
+      inp.addEventListener('input', () => { pal.colors[ci] = inp.value; saveCustomPalettes(); });
+      const rm = document.createElement('button'); rm.className = 'cpal-rm'; rm.textContent = '×'; rm.title = 'Remove color';
+      rm.addEventListener('click', () => { pal.colors.splice(ci, 1); saveCustomPalettes(); renderPalettesEditor(); });
+      wrap.appendChild(inp); wrap.appendChild(rm);
+      colors.appendChild(wrap);
+    });
+    const add = document.createElement('button');
+    add.className = 'sp-btn'; add.textContent = '+ Color';
+    add.addEventListener('click', () => { pal.colors.push('#3498db'); saveCustomPalettes(); renderPalettesEditor(); });
+    colors.appendChild(add);
+    card.appendChild(colors);
+    host.appendChild(card);
+  });
+}
+
 // ── Font options ──────────────────────────────────────────────────────────────
 const FONTS = [
   { name: 'Noto Sans KR',    stack: '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",var(--emoji-font-family),system-ui,sans-serif', gf: 'Noto+Sans+KR:wght@400;500;700;800' },
-  { name: 'Adobe Caslon',    stack: 'adobe-caslon-pro,"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),Georgia,"Times New Roman",serif', gf: null },
   { name: 'Noto Serif CJK',  stack: '"Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),serif',                   gf: 'Noto+Serif+KR:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;600;700' },
   { name: 'JetBrains Mono',  stack: '"JetBrains Mono","Noto Sans KR",var(--emoji-font-family),"Fira Code",Consolas,monospace',             gf: 'JetBrains+Mono:wght@400;600;700;800' },
   { name: 'System Sans',     stack: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",var(--emoji-font-family),sans-serif', gf: null },
@@ -76,11 +218,17 @@ const FONTS = [
 ];
 
 // ── Location shapes ───────────────────────────────────────────────────────────
+// `css` styles the marker div; shapes that need the marker colour reference the
+// `--mk` custom property (set in markerIconHtml) so gradients/rings can use it.
 const LOC_SHAPES = {
   circle:   { css: 'border-radius:50%;',                                                                                                     label: '●' },
+  ring:     { css: 'border-radius:50%;',                                                                                                     label: '◎' },
+  hollow:   { css: 'border-radius:50%;background:#0000;box-shadow:inset 0 0 0 3px var(--mk);',                                               label: '○' },
   square:   { css: 'border-radius:3px;',                                                                                                     label: '■' },
   diamond:  { css: 'border-radius:2px;transform:rotate(45deg);',                                                                             label: '◆' },
   triangle: { css: 'clip-path:polygon(50% 0%,100% 100%,0% 100%);border-radius:0;',                                                          label: '▲' },
+  pentagon: { css: 'clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);border-radius:0;',                                            label: '⬠' },
+  hexagon:  { css: 'clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);border-radius:0;',                                       label: '⬡' },
   star:     { css: 'clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);border-radius:0;',   label: '★' },
 };
 
@@ -89,10 +237,43 @@ let locations    = [];
 let routes       = [];
 let locMarkers   = [];
 let routeLayers  = [];
+let routeHitLayers = [];                            // invisible wide lines for easier clicking
+let routeEmojiMarkers = [];                        // midpoint transport-emoji markers (optional)
+let showRouteEmoji = false;                        // show mode-of-transport emoji at route midpoints
+let routeEmojiSize = 16;                            // px size of the midpoint transport emoji
 let nextRouteType    = 'car';
-let expandedIdx      = null;  // which route's style panel is open
 let expandedPalette  = null;  // which palette accordion is open in style panel
-let expandedLocIdx   = null;  // which location's edit panel is open
+// Unified selection: one kind at a time ('loc' | 'route'), one or many indices.
+// One selected → full edit panel; many → compact bulk panel that edits all together.
+let sel = { kind: null, idxs: [] };
+let selAnchor = null;                             // pivot for shift/range selection
+let showPalettes = false;                         // palette section collapsed by default
+let showAdvancedLabel = false;                    // advanced label/typography options collapsed
+function clearSelection() { sel = { kind: null, idxs: [] }; selAnchor = null; expandedPalette = null; }
+// mods: { range } shift = contiguous range from anchor; { toggle } ctrl/cmd = add/remove one.
+function selectItem(kind, i, mods = {}) {
+  if (sel.kind !== kind) { sel = { kind, idxs: [] }; selAnchor = null; expandedPalette = null; }
+  if (mods.range && selAnchor != null) {
+    const lo = Math.min(selAnchor, i), hi = Math.max(selAnchor, i);
+    sel.idxs = [];
+    for (let k = lo; k <= hi; k++) sel.idxs.push(k);
+  } else if (mods.toggle) {
+    const pos = sel.idxs.indexOf(i);
+    if (pos >= 0) sel.idxs.splice(pos, 1); else sel.idxs.push(i);
+    selAnchor = i;
+    if (!sel.idxs.length) { sel.kind = null; selAnchor = null; }
+  } else if (sel.idxs.length === 1 && sel.idxs[0] === i) {
+    clearSelection();                             // plain click on the lone selection: close
+  } else {
+    sel.idxs = [i]; selAnchor = i; expandedPalette = null;   // plain click: select just this
+  }
+}
+// Translate a mouse event's modifier keys into a selection intent.
+function clickMods(e) {
+  if (e && e.shiftKey) return { range: true };
+  if (e && (e.ctrlKey || e.metaKey)) return { toggle: true };
+  return {};
+}
 let paletteApplyMode = 'same'; // 'same' | 'sequential' | 'bytype'
 let markerPaletteApplyMode = 'all'; // 'all' | 'sequential'
 const paletteOrder = {};
@@ -102,12 +283,20 @@ const IS_STATIC = URL_PARAMS.get('static') === '1';
 const IS_EMBED  = IS_STATIC || URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('embed') === 'true';
 
 // ── Map ───────────────────────────────────────────────────────────────────────
-const map = L.map('map').setView([20, 0], 2);
+// zoomSnap:0 lets the map settle on fractional zoom levels → smooth, continuous
+// zoom (incl. trackpad pinch, which the browser sends as ctrl+wheel). Higher
+// wheelPxPerZoomLevel makes each scroll notch a finer step.
+const map = L.map('map', {
+  zoomSnap: 0,
+  zoomDelta: 0.5,
+  wheelPxPerZoomLevel: 100,
+}).setView([20, 0], 2);
 let tileLayer = null;
 function setMapTheme(key) {
   const t = THEMES[key] || THEMES.voyager;
   if (tileLayer) map.removeLayer(tileLayer);
-  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19 }).addTo(map);
+  // crossOrigin lets the loaded tiles be drawn into a canvas for image export.
+  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19, crossOrigin: true }).addTo(map);
 }
 
 // ── UI Theme ──────────────────────────────────────────────────────────────────
@@ -165,37 +354,34 @@ function greatCirclePoints(lat1, lng1, lat2, lng2, n = 80) {
   return pts;
 }
 
-function curvedPoints(from, to, n = 64) {
-  const crs = map.options.crs || L.CRS.EPSG3857;
-  const zoom = 6;
-  const p1 = crs.latLngToPoint(L.latLng(from.lat, from.lng), zoom);
-  const p2 = crs.latLngToPoint(L.latLng(to.lat, to.lng), zoom);
+// A simple, natural arc between two points: a quadratic Bézier. By default the
+// control point is the midpoint pushed perpendicular by a fixed fraction of the
+// segment length (DEFAULT_BEND). If the segment has a saved `curveCtrl` (set by
+// dragging the line on the map), that geographic point is used instead — so both
+// how much it bows and which way come straight from where the user dragged.
+// Working in projected pixel space keeps the curve scale-invariant.
+const CURVE_DEFAULT_BEND = 0.2;
+const CURVE_PROJECT_ZOOM = 8;
+function curveControlPoint(crs, p1, p2, route) {
+  if (route && route.curveCtrl && Number.isFinite(route.curveCtrl.lat) && Number.isFinite(route.curveCtrl.lng)) {
+    return crs.latLngToPoint(L.latLng(route.curveCtrl.lat, route.curveCtrl.lng), CURVE_PROJECT_ZOOM);
+  }
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist === 0) return [[from.lat, from.lng]];
-  const bend = Math.min(Math.max(dist * 0.12, 18), 90);
-  const normal = L.point(-dy / dist, dx / dist);
-  const c1 = L.point(
-    p1.x + dx * 0.32 + normal.x * bend,
-    p1.y + dy * 0.32 + normal.y * bend
-  );
-  const c2 = L.point(
-    p1.x + dx * 0.68 + normal.x * bend,
-    p1.y + dy * 0.68 + normal.y * bend
-  );
+  return L.point((p1.x + p2.x) / 2 - dy * CURVE_DEFAULT_BEND, (p1.y + p2.y) / 2 + dx * CURVE_DEFAULT_BEND);
+}
+function curvedPoints(from, to, route, n = 64) {
+  const crs = map.options.crs || L.CRS.EPSG3857;
+  const z = CURVE_PROJECT_ZOOM;
+  const p1 = crs.latLngToPoint(L.latLng(from.lat, from.lng), z);
+  const p2 = crs.latLngToPoint(L.latLng(to.lat, to.lng), z);
+  if (p1.x === p2.x && p1.y === p2.y) return [[from.lat, from.lng]];
+  const c = curveControlPoint(crs, p1, p2, route);
   const pts = [];
   for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const mt = 1 - t;
-    const a = mt * mt * mt;
-    const b = 3 * mt * mt * t;
-    const c = 3 * mt * t * t;
-    const d = t * t * t;
-    const p = L.point(
-      a * p1.x + b * c1.x + c * c2.x + d * p2.x,
-      a * p1.y + b * c1.y + c * c2.y + d * p2.y
-    );
-    const ll = crs.pointToLatLng(p, zoom);
+    const t = i / n, mt = 1 - t;
+    const x = mt * mt * p1.x + 2 * mt * t * c.x + t * t * p2.x;
+    const y = mt * mt * p1.y + 2 * mt * t * c.y + t * t * p2.y;
+    const ll = crs.pointToLatLng(L.point(x, y), z);
     pts.push([ll.lat, ll.lng]);
   }
   return pts;
@@ -210,7 +396,7 @@ async function fetchOsrmPoints(profile, from, to) {
 async function resolvePoints(route) {
   const from = locations[route.fromIdx], to = locations[route.toIdx];
   if (!from || !to) return [];
-  if (route.shape === 'curve') return curvedPoints(from, to);
+  if (route.shape === 'curve') return curvedPoints(from, to, route);
   const { routing } = ROUTE_META[route.type];
   if (routing === 'greatcircle') return greatCirclePoints(from.lat, from.lng, to.lat, to.lng);
   if (routing.startsWith('osrm-')) {
@@ -221,16 +407,30 @@ async function resolvePoints(route) {
 }
 
 // ── Polyline options ──────────────────────────────────────────────────────────
+// Base dash patterns. route.dashScale is *density*: higher → more dashes, so the
+// pattern lengths shrink (scale = 1/density). Dotted uses round caps to read as
+// dots; 'default' falls back to the transport type's own pattern.
+const DASH_PATTERNS = {
+  dashed:  [10, 7],
+  dotted:  [1, 7],
+  dashdot: [12, 6, 1, 6],
+};
 function polylineOpts(route) {
-  const meta     = ROUTE_META[route.type];
-  const color    = route.color ?? meta.color;
-  const weight   = route.weight ?? meta.weight;
-  const dashArray =
-    route.dash === 'solid'  ? null  :
-    route.dash === 'dashed' ? '10 7' :
-    route.dash === 'dotted' ? '2 8'  :
-    meta.dashArray;
-  return { color, dashArray, weight, opacity: 0.88 };
+  const meta   = ROUTE_META[route.type];
+  const color  = route.color ?? meta.color;
+  const weight = route.weight ?? meta.weight;
+  const scale  = 1 / (route.dashScale || 1);
+  const base   = DASH_PATTERNS[route.dash];
+  let dashArray, lineCap;
+  if (route.dash === 'solid') {
+    dashArray = null;
+  } else if (base) {
+    dashArray = base.map(n => Math.max(1, Math.round(n * scale))).join(' ');
+    if (route.dash === 'dotted') lineCap = 'round';
+  } else {
+    dashArray = meta.dashArray;   // 'default' / auto
+  }
+  return { color, dashArray, weight, opacity: 0.88, ...(lineCap ? { lineCap } : {}) };
 }
 
 // ── Draw / clear routes ───────────────────────────────────────────────────────
@@ -240,27 +440,173 @@ async function drawRoute(idx) {
   if (!from || !to) return;
   const points = await resolvePoints(route);
   if (!points.length) return;
-  const layer = L.polyline(points, polylineOpts(route)).addTo(map);
-  layer.bindPopup(`<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>${from.name} → ${to.name}`);
-  while (routeLayers.length <= idx) routeLayers.push(null);
-  if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
-  routeLayers[idx] = layer;
+  while (routeHitLayers.length <= idx) routeHitLayers.push(null);
+  if (routeHitLayers[idx]) { map.removeLayer(routeHitLayers[idx]); routeHitLayers[idx] = null; }
+
+  if (IS_EMBED) {
+    const layer = L.polyline(points, polylineOpts(route)).addTo(map);
+    layer.bindPopup(`<b>${TYPE_EMOJI[route.type]} ${route.type}</b><br/>${from.name} → ${to.name}`);
+    while (routeLayers.length <= idx) routeLayers.push(null);
+    if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
+    routeLayers[idx] = layer;
+  } else {
+    // Visible line is non-interactive; a wide transparent "hit" line on top makes
+    // thin routes easy to click/drag without changing how they look.
+    const layer = L.polyline(points, { ...polylineOpts(route), interactive: false }).addTo(map);
+    const hitWeight = Math.max((route.weight ?? ROUTE_META[route.type].weight) + 14, 22);
+    const hit = L.polyline(points, { weight: hitWeight, opacity: 0, interactive: true }).addTo(map);
+    hit.on('click', e => {
+      L.DomEvent.stop(e);
+      selectItem('route', idx, clickMods(e.originalEvent));
+      renderLocList();
+    });
+    if (route.shape === 'curve') enableCurveDrag(hit, idx);
+    while (routeLayers.length <= idx) routeLayers.push(null);
+    if (routeLayers[idx]) map.removeLayer(routeLayers[idx]);
+    routeLayers[idx] = layer;
+    routeHitLayers[idx] = hit;
+  }
+  drawRouteEmoji(idx, points);
+}
+// Optional transport-mode emoji at the midpoint of a route segment.
+// True midpoint by path length (not array index), so straight 2-point segments
+// place the emoji in the centre rather than on the destination.
+function routeMidpoint(points) {
+  if (points.length <= 1) return points[0];
+  const seg = [];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const d = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+    seg.push(d); total += d;
+  }
+  let half = total / 2;
+  for (let i = 0; i < seg.length; i++) {
+    if (half <= seg[i]) {
+      const t = seg[i] ? half / seg[i] : 0;
+      return [points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+              points[i][1] + (points[i + 1][1] - points[i][1]) * t];
+    }
+    half -= seg[i];
+  }
+  return points[Math.floor(points.length / 2)];
+}
+function drawRouteEmoji(idx, points) {
+  while (routeEmojiMarkers.length <= idx) routeEmojiMarkers.push(null);
+  if (routeEmojiMarkers[idx]) { map.removeLayer(routeEmojiMarkers[idx]); routeEmojiMarkers[idx] = null; }
+  const route = routes[idx];
+  if (!showRouteEmoji || !route || !points || !points.length) return;
+  const emoji = TYPE_EMOJI[route.type] || '';
+  const size = routeEmojiSize || 16;
+  const box = size + 8;
+  const m = L.marker(routeMidpoint(points), {
+    icon: L.divIcon({ className: 'route-emoji', html: `<span style="font-size:${size}px">${emoji}</span>`, iconSize: [box, box], iconAnchor: [box / 2, box / 2] }),
+    interactive: false, keyboard: false,
+  }).addTo(map);
+  routeEmojiMarkers[idx] = m;
 }
 function clearRouteLayer(idx) {
   if (routeLayers[idx]) { map.removeLayer(routeLayers[idx]); routeLayers[idx] = null; }
+  if (routeHitLayers[idx]) { map.removeLayer(routeHitLayers[idx]); routeHitLayers[idx] = null; }
+  if (routeEmojiMarkers[idx]) { map.removeLayer(routeEmojiMarkers[idx]); routeEmojiMarkers[idx] = null; }
+}
+
+// ── Curve drag ──────────────────────────────────────────────────────────────────
+// Drag a curve segment on the map to reshape it. The point under the cursor (the
+// curve's apex) follows the pointer; we solve for the Bézier control point that
+// puts the apex there and store it as a geographic point so it survives zooming.
+function setCurveControlFromApex(idx, apexLatLng) {
+  const route = routes[idx];
+  if (!route) return;
+  const from = locations[route.fromIdx], to = locations[route.toIdx];
+  if (!from || !to) return;
+  const crs = map.options.crs || L.CRS.EPSG3857;
+  const z = CURVE_PROJECT_ZOOM;
+  const p1 = crs.latLngToPoint(L.latLng(from.lat, from.lng), z);
+  const p2 = crs.latLngToPoint(L.latLng(to.lat, to.lng), z);
+  const apex = crs.latLngToPoint(apexLatLng, z);
+  // Quadratic Bézier apex (t=0.5) = 0.25*p1 + 0.5*ctrl + 0.25*p2  ⇒  solve for ctrl.
+  const ctrl = L.point(2 * apex.x - 0.5 * (p1.x + p2.x), 2 * apex.y - 0.5 * (p1.y + p2.y));
+  const cll = crs.pointToLatLng(ctrl, z);
+  route.curveCtrl = { lat: cll.lat, lng: cll.lng };
+  const pts = curvedPoints(from, to, route);
+  if (routeLayers[idx]) routeLayers[idx].setLatLngs(pts);
+  if (routeHitLayers[idx]) routeHitLayers[idx].setLatLngs(pts);
+  if (routeEmojiMarkers[idx]) routeEmojiMarkers[idx].setLatLng(routeMidpoint(pts));
+}
+
+function enableCurveDrag(layer, idx) {
+  layer.on('mousedown', e => {
+    L.DomEvent.stop(e);
+    map.dragging.disable();
+    let moved = false;
+    const onMove = ev => { moved = true; setCurveControlFromApex(idx, ev.latlng); };
+    const onUp = () => {
+      map.off('mousemove', onMove);
+      map.off('mouseup', onUp);
+      map.dragging.enable();
+      if (moved) {
+        layer.once('click', ev => L.DomEvent.stop(ev)); // swallow the click that ends a drag (no popup)
+        save();
+      }
+    };
+    map.on('mousemove', onMove);
+    map.on('mouseup', onUp);
+  });
 }
 
 // ── Location data normalizer ──────────────────────────────────────────────────
+// Eight label positions (4 sides + 4 corners). `dir` is the underlying Leaflet
+// tooltip direction; sx/sy is the offset sign that places it on that side/corner.
+const LABEL_GAP = 14;
+const LABEL_POS = {
+  topleft:     { dir: 'left',   sx: -1, sy: -1 },
+  top:         { dir: 'top',    sx:  0, sy: -1 },
+  topright:    { dir: 'right',  sx:  1, sy: -1 },
+  left:        { dir: 'left',   sx: -1, sy:  0 },
+  right:       { dir: 'right',  sx:  1, sy:  0 },
+  bottomleft:  { dir: 'left',   sx: -1, sy:  1 },
+  bottom:      { dir: 'bottom', sx:  0, sy:  1 },
+  bottomright: { dir: 'right',  sx:  1, sy:  1 },
+};
+function leafletLabelDirection(pos) { return (LABEL_POS[pos] || LABEL_POS.right).dir; }
+// Default offset: pushes the label clear of the marker (radius + fixed gap) so the
+// number and label keep a visible margin; diagonal positions offset on both axes.
+function defaultLabelOffset(pos, markerSize = 18) {
+  const d = Math.round((markerSize ?? 18) / 2) + LABEL_GAP;
+  const p = LABEL_POS[pos] || LABEL_POS.right;
+  return { x: p.sx * d, y: p.sy * d };
+}
+// 3×3 grid of label-position buttons (sides + corners). onPick(pos) handles it.
+function makeLabelPosGrid(currentPos, onPick) {
+  const grid = document.createElement('div');
+  grid.className = 'label-pos-grid';
+  [['topleft', '↖'], ['top', '↑'], ['topright', '↗'],
+   ['left', '←'], [null, ''], ['right', '→'],
+   ['bottomleft', '↙'], ['bottom', '↓'], ['bottomright', '↘']].forEach(([pos, icon]) => {
+    if (!pos) { grid.appendChild(document.createElement('span')); return; }
+    const b = document.createElement('button');
+    b.className = 'shape-btn' + (currentPos === pos ? ' active' : '');
+    b.textContent = icon; b.title = pos;
+    b.addEventListener('click', () => onPick(pos));
+    grid.appendChild(b);
+  });
+  return grid;
+}
+
 function normalizeLoc(l) {
+  const labelPos = l.labelPos || 'right';
+  const defOff = defaultLabelOffset(labelPos, l.markerSize ?? 18);
   return {
     name: l.name, lat: l.lat, lng: l.lng,
     description: l.description || '', date: l.date || '',
     shape: l.shape || 'circle', markerColor: l.markerColor || null,
     markerSize: l.markerSize ?? 18,
+    ringGap: Number.isFinite(l.ringGap) ? l.ringGap : 6,
+    markerBorderColor: l.markerBorderColor || null,
     markerShowNumber: l.markerShowNumber ?? true,
     markerNumberColor: l.markerNumberColor || '#18181b',
     labelMode:        l.labelMode        || 'always',
-    labelPos:         l.labelPos         || 'right',
+    labelPos,
     labelRound:       l.labelRound       ?? 4,
     labelSize:        l.labelSize        ?? 11,
     labelNumberSize:  l.labelNumberSize  ?? 85,
@@ -270,8 +616,8 @@ function normalizeLoc(l) {
     labelBg:          l.labelBg          ?? '#ffffff',
     labelBorderColor: l.labelBorderColor ?? null,
     labelArrow:       l.labelArrow       ?? false,
-    labelOffsetX:     l.labelOffsetX     ?? 0,
-    labelOffsetY:     l.labelOffsetY     ?? 0,
+    labelOffsetX:     l.labelOffsetX     ?? defOff.x,
+    labelOffsetY:     l.labelOffsetY     ?? defOff.y,
     labelWidth:       l.labelWidth       ?? null,
     labelShowNumber:  l.labelShowNumber  ?? false,
     labelShowName:    l.labelShowName    ?? true,
@@ -323,10 +669,26 @@ function markerIconHtml(loc, { hidden = false } = {}) {
   const number = loc.markerShowNumber === false ? '' : (loc.visitNumber ?? '');
   const numberColor = loc.markerNumberColor || '#18181b';
   const size = loc.markerSize ?? 18;
-  const fontSize = Math.max(8, Math.round(size * 0.5));
+  // The "# size" control (labelNumberSize, default 85) also scales the pin digit;
+  // 85 keeps the original size, higher/lower grows or shrinks it.
+  const numScale = (loc.labelNumberSize ?? 85) / 85;
+  const fontSize = Math.max(7, Math.round(size * 0.5 * numScale));
   const hiddenStyle = hidden ? 'opacity:0;pointer-events:none;' : '';
   const numberStyle = shapeKey === 'diamond' ? ' style="transform:rotate(-45deg);"' : '';
-  return `<div class="map-marker-shape" style="width:${size}px;height:${size}px;font-size:${fontSize}px;background:${color};color:${numberColor};${hiddenStyle}${shape.css}"><span${numberStyle}>${number}</span></div>`;
+  let shapeStyle;
+  if (shapeKey === 'ring') {
+    // Crisp ring: a solid border is the outline, padding is the gap, and a
+    // content-box background is the inner dot (no aliased radial-gradient edges).
+    const ringColor = loc.markerBorderColor || color;
+    const ringT = Math.max(2, Math.round(size * 0.11));
+    const maxPad = Math.max(0, Math.floor(size / 2 - ringT - 1));
+    const gap = Math.min(Math.round(((loc.ringGap ?? 6) / 100) * (size / 2)), maxPad);
+    shapeStyle = `border-radius:50%;box-sizing:border-box;border:${ringT}px solid ${ringColor};padding:${gap}px;background:${color};background-clip:content-box;`;
+  } else {
+    const borderColor = loc.markerBorderColor || 'rgba(255,255,255,.85)';
+    shapeStyle = `background:${color};border-color:${borderColor};${shape.css}`;
+  }
+  return `<div class="map-marker-hover" style="width:${size}px;height:${size}px;${hiddenStyle}"><div class="map-marker-shape" style="width:100%;height:100%;font-size:${fontSize}px;--mk:${color};color:${numberColor};${shapeStyle}"><span${numberStyle}>${number}</span></div></div>`;
 }
 
 function locKey(loc) {
@@ -388,8 +750,14 @@ function buildTooltipStyles() {
 function applyTooltipLayoutStyle(tt, loc) {
   if (!tt || !loc) return;
   const width = loc.labelWidth ?? null;
-  if (width) tt.style.setProperty('width', `${width}px`, 'important');
-  else tt.style.removeProperty('width');
+  if (width) {
+    // Explicit (dragged) width overrides the default cap.
+    tt.style.setProperty('width', `${width}px`, 'important');
+    tt.style.setProperty('max-width', 'none', 'important');
+  } else {
+    tt.style.removeProperty('width');
+    tt.style.removeProperty('max-width');
+  }
 }
 
 function setTooltipOffset(marker, loc) {
@@ -422,8 +790,11 @@ function preserveLabelScreenPosition(locIdx, updateFn) {
   const after = getLabelScreenRect(locIdx);
   const loc = locations[locIdx];
   if (!before || !after || !loc || (loc.labelMode || 'always') !== 'always') return;
-  loc.labelOffsetX = (loc.labelOffsetX ?? 0) + Math.round(before.left - after.left);
-  loc.labelOffsetY = (loc.labelOffsetY ?? 0) + Math.round(before.top - after.top);
+  const dx = Math.round(before.left - after.left), dy = Math.round(before.top - after.top);
+  // Guard against a not-yet-settled measurement flinging the label off-screen.
+  if (Math.abs(dx) > 400 || Math.abs(dy) > 400) return;
+  loc.labelOffsetX = (loc.labelOffsetX ?? 0) + dx;
+  loc.labelOffsetY = (loc.labelOffsetY ?? 0) + dy;
   updateTooltipLayout(locMarkers[locIdx]?.marker, loc);
 }
 
@@ -440,7 +811,7 @@ function addLocMarker(loc, locIdx) {
   const mode = loc.labelMode || 'always';
   if (mode !== 'hidden') {
     marker.bindTooltip(labelTooltipHtml(loc), {
-      direction: loc.labelPos || 'right',
+      direction: leafletLabelDirection(loc.labelPos),
       offset: L.point(loc.labelOffsetX ?? 0, loc.labelOffsetY ?? 0),
       permanent: mode === 'always',
       interactive: mode === 'always',
@@ -453,6 +824,13 @@ function addLocMarker(loc, locIdx) {
         el.dataset.locIdx = String(locIdx);
         applyTooltipLayoutStyle(el, locations[locIdx]);
       }
+      // Leaflet positions the tooltip from its measured size, before the element
+      // is laid out and before the web font sets the final text width — so the
+      // first open lands in a stale spot. Re-run positioning now, after layout
+      // settles, and once fonts finish loading.
+      e.tooltip.update();
+      requestAnimationFrame(() => e.tooltip.update());
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => e.tooltip.update());
     });
     if (mode === 'always') {
       marker.openTooltip();
@@ -463,8 +841,8 @@ function addLocMarker(loc, locIdx) {
       }
     }
   }
-  marker.on('click', () => {
-    expandedLocIdx = expandedLocIdx === locIdx ? null : locIdx;
+  marker.on('click', e => {
+    selectItem('loc', locIdx, clickMods(e.originalEvent));
     renderLocList();
     setTimeout(() => {
       const el = document.getElementById(`loc-item-${locIdx}`);
@@ -482,6 +860,11 @@ function rebuildMarkers() {
   buildTooltipStyles();
   locations.forEach(addLocMarker);
   applyAllTooltipLayoutStyles();
+  // Permanent tooltips are positioned from their measured size; re-run once layout
+  // has settled and again after web fonts load, otherwise top/left/bottom labels
+  // sit in a stale spot until the first hover.
+  requestAnimationFrame(applyAllTooltipLayoutStyles);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyAllTooltipLayoutStyles);
 }
 
 // ── Label drag ────────────────────────────────────────────────────────────────
@@ -593,7 +976,7 @@ function makeSegmentModeBtns(routeIdx, currentType) {
 // ── Bulk route helpers ────────────────────────────────────────────────────────
 async function rebuildAllRoutes() {
   routeLayers.forEach((_, i) => clearRouteLayer(i));
-  routeLayers = [];
+  routeLayers = []; routeHitLayers = []; routeEmojiMarkers = [];
   for (let i = 0; i < routes.length; i++) await drawRoute(i);
 }
 
@@ -625,7 +1008,7 @@ function applyPaletteOrderSettings(value = {}) {
 
 function adjustPaletteOrder(scope, name, action) {
   const key = `${scope}:${name}`;
-  const colors = PALETTES[name];
+  const colors = getPaletteColors(name);
   if (!colors) return;
   const state = paletteOrder[key] || { shift: 0, reversed: false };
   if (action === 'reverse') state.reversed = !state.reversed;
@@ -672,19 +1055,15 @@ function makeStylePanel(routeIdx, route) {
   colorInput.addEventListener('input', async () => { routes[routeIdx].color = colorInput.value; await redrawRoute(routeIdx); });
   customWrap.appendChild(customFill); customWrap.appendChild(colorInput);
   colorRow.appendChild(customWrap);
-  const colorAllBtn = document.createElement('button');
-  colorAllBtn.className = 'sp-all';
-  colorAllBtn.textContent = '↓ All';
-  colorAllBtn.title = 'Apply this segment color to every segment';
-  colorAllBtn.addEventListener('click', async () => {
-    const color = currentRouteColor();
-    routes.forEach(r => { r.color = color; });
-    await rebuildAllRoutes(); renderLocList(); save();
-  });
-  colorRow.appendChild(colorAllBtn);
   panel.appendChild(colorRow);
 
-  // — Palette accordion: pick individual colors or apply whole palette to all —
+  // — Palette accordion (collapsed by default to reduce clutter) —
+  const palToggle = document.createElement('button');
+  palToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
+  palToggle.textContent = `${showPalettes ? '▾' : '▸'} Palettes`;
+  palToggle.addEventListener('click', () => { showPalettes = !showPalettes; renderLocList(); });
+  panel.appendChild(palToggle);
+
   const paletteSection = document.createElement('div');
   paletteSection.className = 'palette-section';
   paletteSection.dataset.scrollKey = `route:${routeIdx}`;
@@ -706,10 +1085,11 @@ function makeStylePanel(routeIdx, route) {
   typeBtn.addEventListener('click', () => { paletteApplyMode = 'bytype'; renderLocList(); });
   palModeRow.appendChild(palLbl); palModeRow.appendChild(sameBtn); palModeRow.appendChild(seqBtn); palModeRow.appendChild(typeBtn);
   paletteSection.appendChild(palModeRow);
+  paletteSection.appendChild(makeManagePalettesBtn());
 
   const typeKeys = Object.keys(TYPE_EMOJI);
 
-  Object.entries(PALETTES).forEach(([name, colors]) => {
+  Object.entries(allPalettes()).forEach(([name, colors]) => {
     const entry = document.createElement('div'); entry.className = 'palette-entry';
     const orderedColors = colors ? orderedPaletteColors('route', name, colors) : null;
 
@@ -793,16 +1173,17 @@ function makeStylePanel(routeIdx, route) {
     entry.appendChild(body);
     paletteSection.appendChild(entry);
   });
-  panel.appendChild(paletteSection);
+  if (showPalettes) panel.appendChild(paletteSection);
 
-  // — Dash row —
+  // — Dash row (shape) —
   const dashRow = document.createElement('div');
-  dashRow.className = 'sp-row';
+  dashRow.className = 'sp-row-wrap';
   dashRow.innerHTML = '<span class="sp-label">Dash</span>';
   const dashes = [
     { key: 'solid',   label: '———' },
     { key: 'dashed',  label: '– –' },
     { key: 'dotted',  label: '· · ·' },
+    { key: 'dashdot', label: '–·–' },
     { key: 'default', label: 'Auto' },
   ];
   dashes.forEach(({ key, label }) => {
@@ -812,16 +1193,26 @@ function makeStylePanel(routeIdx, route) {
     btn.addEventListener('click', async () => { routes[routeIdx].dash = key; await redrawRoute(routeIdx); });
     dashRow.appendChild(btn);
   });
-  const dashAllBtn = document.createElement('button');
-  dashAllBtn.className = 'sp-all'; dashAllBtn.textContent = '↓ All';
-  dashAllBtn.title = 'Apply this dash style to all segments';
-  dashAllBtn.addEventListener('click', async () => {
-    const d = route.dash || 'solid';
-    routes.forEach(r => { r.dash = d; });
-    await rebuildAllRoutes(); renderLocList(); save();
-  });
-  dashRow.appendChild(dashAllBtn);
   panel.appendChild(dashRow);
+
+  // — Dash density (only meaningful for patterned dashes) —
+  if (DASH_PATTERNS[route.dash]) {
+    const densRow = document.createElement('div');
+    densRow.className = 'sp-row';
+    densRow.innerHTML = '<span class="sp-label">Density</span>';
+    const densSlider = document.createElement('input');
+    densSlider.type = 'range'; densSlider.min = 0.5; densSlider.max = 3; densSlider.step = 0.25;
+    densSlider.value = route.dashScale ?? 1; densSlider.className = 'sp-slider';
+    const densVal = document.createElement('span');
+    densVal.className = 'sp-slider-val'; densVal.textContent = `${route.dashScale ?? 1}×`;
+    densSlider.addEventListener('input', () => { densVal.textContent = `${densSlider.value}×`; });
+    densSlider.addEventListener('change', async () => {
+      routes[routeIdx].dashScale = parseFloat(densSlider.value);
+      await redrawRoute(routeIdx);
+    });
+    densRow.appendChild(densSlider); densRow.appendChild(densVal);
+    panel.appendChild(densRow);
+  }
 
   // — Geometry row —
   const shapeRow = document.createElement('div');
@@ -837,16 +1228,25 @@ function makeStylePanel(routeIdx, route) {
     btn.addEventListener('click', async () => { routes[routeIdx].shape = key; await redrawRoute(routeIdx); });
     shapeRow.appendChild(btn);
   });
-  const shapeAllBtn = document.createElement('button');
-  shapeAllBtn.className = 'sp-all'; shapeAllBtn.textContent = '↓ All';
-  shapeAllBtn.title = 'Apply this line shape to all segments';
-  shapeAllBtn.addEventListener('click', async () => {
-    const shape = route.shape || 'route';
-    routes.forEach(r => { r.shape = shape; });
-    await rebuildAllRoutes(); renderLocList(); save();
-  });
-  shapeRow.appendChild(shapeAllBtn);
   panel.appendChild(shapeRow);
+
+  // — Curve controls (only when this segment is a curve) —
+  if ((route.shape || 'route') === 'curve') {
+    const curveRow = document.createElement('div');
+    curveRow.className = 'sp-row';
+    const hint = document.createElement('span');
+    hint.className = 'sp-hint';
+    hint.textContent = 'Drag the line on the map to bend it.';
+    curveRow.appendChild(hint);
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'sp-btn';
+    resetBtn.textContent = 'Reset curve';
+    resetBtn.title = 'Restore the default arc';
+    resetBtn.disabled = !route.curveCtrl;
+    resetBtn.addEventListener('click', async () => { routes[routeIdx].curveCtrl = null; await redrawRoute(routeIdx); });
+    curveRow.appendChild(resetBtn);
+    panel.appendChild(curveRow);
+  }
 
   // — Width slider (1–10, null = auto = type default) —
   const widthRow = document.createElement('div');
@@ -857,7 +1257,7 @@ function makeStylePanel(routeIdx, route) {
   const currentVal = route.weight ?? defaultWeight;
 
   const slider = document.createElement('input');
-  slider.type = 'range'; slider.min = 1; slider.max = 10; slider.step = 1;
+  slider.type = 'range'; slider.min = 1; slider.max = 24; slider.step = 1;
   slider.value = currentVal; slider.className = 'sp-slider';
 
   const valLabel = document.createElement('span');
@@ -875,17 +1275,27 @@ function makeStylePanel(routeIdx, route) {
     await redrawRoute(routeIdx);
   });
 
-  const widthAllBtn = document.createElement('button');
-  widthAllBtn.className = 'sp-all'; widthAllBtn.textContent = '↓ All';
-  widthAllBtn.title = 'Apply this width to all segments';
-  widthAllBtn.addEventListener('click', async () => {
-    const v = parseInt(slider.value);
-    const w = v === defaultWeight ? null : v;
-    routes.forEach(r => { r.weight = w; });
+  widthRow.appendChild(slider); widthRow.appendChild(valLabel);
+  panel.appendChild(widthRow);
+
+  // — Mode-of-transport emoji at route midpoints (global) —
+  panel.appendChild(makeRouteEmojiRow());
+
+  // — Apply line style (dash/density/line/width) to every segment, leaving each
+  //   segment's colour untouched so sequential/by-type palettes survive —
+  const allRow = document.createElement('div');
+  allRow.className = 'lep-row'; allRow.style.justifyContent = 'flex-end';
+  const allBtn = document.createElement('button');
+  allBtn.className = 'palette-apply';
+  allBtn.textContent = '↓ Apply line style to all segments';
+  allBtn.title = 'Copy dash, density, line shape and width to every segment (colours unchanged)';
+  allBtn.addEventListener('click', async () => {
+    const src = routes[routeIdx];
+    routes.forEach(r => { r.dash = src.dash; r.dashScale = src.dashScale; r.shape = src.shape; r.weight = src.weight; });
     await rebuildAllRoutes(); renderLocList(); save();
   });
-  widthRow.appendChild(slider); widthRow.appendChild(valLabel); widthRow.appendChild(widthAllBtn);
-  panel.appendChild(widthRow);
+  allRow.appendChild(allBtn);
+  panel.appendChild(allRow);
 
   return panel;
 }
@@ -951,8 +1361,9 @@ function makeMarkerPaletteControls(locIdx, loc) {
   modeRow.appendChild(allBtn);
   modeRow.appendChild(seqBtn);
   section.appendChild(modeRow);
+  section.appendChild(makeManagePalettesBtn());
 
-  Object.entries(PALETTES).forEach(([name, colors]) => {
+  Object.entries(allPalettes()).forEach(([name, colors]) => {
     if (!colors) return;
     const orderedColors = orderedPaletteColors('marker', name, colors);
 
@@ -1184,13 +1595,20 @@ function makeLocEditPanel(locIdx) {
   cInput.addEventListener('input', () => { locations[locIdx].markerColor = cInput.value; rebuildMarkers(); save(); });
   cWrap.appendChild(cFill); cWrap.appendChild(cInput);
   colorRow.appendChild(cWrap);
-  const colorAllBtn = document.createElement('button');
-  colorAllBtn.className = 'sp-all';
-  colorAllBtn.textContent = '↓ All';
-  colorAllBtn.title = 'Apply this marker color to all stops';
-  colorAllBtn.addEventListener('click', () => applyMarkerColorToAll(locations[locIdx].markerColor || '#89b4fa'));
-  colorRow.appendChild(colorAllBtn);
   panel.appendChild(colorRow);
+
+  // Border color (outline for shapes; ring outline for the ring shape)
+  const borderRow = document.createElement('div'); borderRow.className = 'lep-row';
+  borderRow.innerHTML = '<span class="lep-label">Border</span>';
+  const bInput = document.createElement('input'); bInput.type = 'color';
+  bInput.value = loc.markerBorderColor || '#ffffff';
+  bInput.style.cssText = 'width:34px;height:24px;border:none;border-radius:5px;cursor:pointer;padding:1px;flex-shrink:0;';
+  bInput.addEventListener('input', () => { locations[locIdx].markerBorderColor = bInput.value; rebuildMarkers(); save(); });
+  const bReset = document.createElement('button'); bReset.className = 'sp-btn'; bReset.textContent = 'Default';
+  bReset.title = 'Reset to the default white outline';
+  bReset.addEventListener('click', () => { locations[locIdx].markerBorderColor = null; rebuildMarkers(); renderLocList(); save(); });
+  borderRow.appendChild(bInput); borderRow.appendChild(bReset);
+  panel.appendChild(borderRow);
 
   const markerNumRow = document.createElement('div');
   markerNumRow.className = 'pin-number-row';
@@ -1210,18 +1628,12 @@ function makeLocEditPanel(locIdx) {
     locations[locIdx].markerNumberColor = markerNumColor.value;
     rebuildMarkers(); save();
   });
-  const markerNumAllBtn = document.createElement('button');
-  markerNumAllBtn.className = 'sp-all';
-  markerNumAllBtn.textContent = '↓ All';
-  markerNumAllBtn.title = 'Apply this pin number setting to all stops';
-  markerNumAllBtn.addEventListener('click', () => applyMarkerNumberStyleToAll(locations[locIdx]));
   const markerNumLabel = document.createElement('span');
   markerNumLabel.className = 'pin-number-label';
   markerNumLabel.textContent = 'Number color';
   markerNumRow.appendChild(markerNumBtn);
   markerNumRow.appendChild(markerNumLabel);
   markerNumRow.appendChild(markerNumColor);
-  markerNumRow.appendChild(markerNumAllBtn);
   panel.appendChild(markerNumRow);
 
   const markerSizeRow = document.createElement('div');
@@ -1229,8 +1641,8 @@ function makeLocEditPanel(locIdx) {
   markerSizeRow.innerHTML = '<span class="lep-label">Pin size</span>';
   const markerSizeSlider = document.createElement('input');
   markerSizeSlider.type = 'range';
-  markerSizeSlider.min = 10;
-  markerSizeSlider.max = 36;
+  markerSizeSlider.min = 8;
+  markerSizeSlider.max = 80;
   markerSizeSlider.step = 1;
   markerSizeSlider.value = loc.markerSize ?? 18;
   markerSizeSlider.className = 'sp-slider';
@@ -1244,16 +1656,34 @@ function makeLocEditPanel(locIdx) {
     locations[locIdx].markerSize = parseInt(markerSizeSlider.value, 10);
     rebuildMarkers(); save();
   });
-  const markerSizeAllBtn = document.createElement('button');
-  markerSizeAllBtn.className = 'sp-all';
-  markerSizeAllBtn.textContent = '↓ All';
-  markerSizeAllBtn.title = 'Apply this pin size to all stops';
-  markerSizeAllBtn.addEventListener('click', () => applyMarkerSizeToAll(parseInt(markerSizeSlider.value, 10)));
   markerSizeRow.appendChild(markerSizeSlider);
   markerSizeRow.appendChild(markerSizeVal);
-  markerSizeRow.appendChild(markerSizeAllBtn);
   panel.appendChild(markerSizeRow);
-  panel.appendChild(makeMarkerPaletteControls(locIdx, loc));
+
+  // Ring gap (only meaningful for the ring shape)
+  if ((loc.shape || 'circle') === 'ring') {
+    const gapRow = document.createElement('div'); gapRow.className = 'lep-row';
+    gapRow.innerHTML = '<span class="lep-label">Ring gap</span>';
+    const gapSlider = document.createElement('input');
+    gapSlider.type = 'range'; gapSlider.min = 0; gapSlider.max = 80; gapSlider.step = 1;
+    gapSlider.value = loc.ringGap ?? 6; gapSlider.className = 'sp-slider';
+    const gapVal = document.createElement('span'); gapVal.className = 'sp-slider-val';
+    gapVal.textContent = `${loc.ringGap ?? 6}%`;
+    gapSlider.addEventListener('input', () => { gapVal.textContent = `${gapSlider.value}%`; });
+    gapSlider.addEventListener('change', () => {
+      locations[locIdx].ringGap = parseInt(gapSlider.value, 10);
+      rebuildMarkers(); save();
+    });
+    gapRow.appendChild(gapSlider); gapRow.appendChild(gapVal);
+    panel.appendChild(gapRow);
+  }
+
+  const markerPalToggle = document.createElement('button');
+  markerPalToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
+  markerPalToggle.textContent = `${showPalettes ? '▾' : '▸'} Palettes`;
+  markerPalToggle.addEventListener('click', () => { showPalettes = !showPalettes; renderLocList(); });
+  panel.appendChild(markerPalToggle);
+  if (showPalettes) panel.appendChild(makeMarkerPaletteControls(locIdx, loc));
 
   // ── Label section ────────────────────────────────────────────────────────────
   const lblDivider = document.createElement('div');
@@ -1268,11 +1698,11 @@ function makeLocEditPanel(locIdx) {
     btn.className = 'shape-btn label-mode-btn' + ((loc.labelMode||'always')===m?' active':'');
     btn.textContent = txt;
     btn.addEventListener('click', () => {
-      preserveLabelScreenPosition(locIdx, () => {
-        locations[locIdx].labelMode = m;
-        rebuildMarkers();
-      });
-      renderLocList(); save();
+      // A mode change keeps the same position/offset, so don't run screen-position
+      // preservation here — measuring a not-yet-settled "always" tooltip corrupts
+      // the offset and pushes the label off-screen.
+      locations[locIdx].labelMode = m;
+      rebuildMarkers(); renderLocList(); save();
     });
     lblModeRow.appendChild(btn);
   });
@@ -1302,20 +1732,33 @@ function makeLocEditPanel(locIdx) {
   });
   panel.appendChild(lblContentRow);
 
-  // Position + Arrow toggle on same row
-  const lblPosRow = document.createElement('div'); lblPosRow.className = 'lep-row';
+  // Position — 3×3 grid (sides + corners)
+  const lblPosRow = document.createElement('div'); lblPosRow.className = 'lep-row top';
   lblPosRow.innerHTML = '<span class="lep-label">Position</span>';
-  [['right','→'],['left','←'],['top','↑'],['bottom','↓']].forEach(([p, icon]) => {
-    const btn = document.createElement('button');
-    btn.className = 'shape-btn' + ((loc.labelPos||'right')===p?' active':'');
-    btn.textContent = icon; btn.title = p;
-    btn.addEventListener('click', () => { locations[locIdx].labelPos = p; rebuildMarkers(); renderLocList(); save(); });
-    lblPosRow.appendChild(btn);
+  lblPosRow.appendChild(makeLabelPosGrid(loc.labelPos || 'right', pos => {
+    const l = locations[locIdx];
+    l.labelPos = pos;
+    // Snap to the chosen side/corner with the default margin, discarding any nudge.
+    const off = defaultLabelOffset(pos, l.markerSize ?? 18);
+    l.labelOffsetX = off.x; l.labelOffsetY = off.y;
+    rebuildMarkers(); renderLocList(); save();
+  }));
+  panel.appendChild(lblPosRow);
+
+  // Apply-position-to-all + arrow toggle
+  const posExtraRow = document.createElement('div'); posExtraRow.className = 'lep-row';
+  posExtraRow.innerHTML = '<span class="lep-label"></span>';
+  const posAllBtn = document.createElement('button');
+  posAllBtn.className = 'sp-btn'; posAllBtn.textContent = '↓ All stops';
+  posAllBtn.title = 'Use this label position for all stops';
+  posAllBtn.addEventListener('click', () => {
+    const src = locations[locIdx];
+    locations.forEach(l => { l.labelPos = src.labelPos; l.labelOffsetX = src.labelOffsetX; l.labelOffsetY = src.labelOffsetY; });
+    rebuildMarkers(); renderLocList(); save();
   });
-  // Spacer
+  posExtraRow.appendChild(posAllBtn);
   const posSpacer = document.createElement('span'); posSpacer.style.flex = '1';
-  lblPosRow.appendChild(posSpacer);
-  // Arrow toggle
+  posExtraRow.appendChild(posSpacer);
   const arrowBtn = document.createElement('button');
   arrowBtn.className = 'shape-btn' + ((loc.labelArrow ?? false) ? ' active' : '');
   arrowBtn.textContent = '↗'; arrowBtn.title = 'Show arrow tip';
@@ -1323,8 +1766,17 @@ function makeLocEditPanel(locIdx) {
     locations[locIdx].labelArrow = !(loc.labelArrow ?? false);
     buildTooltipStyles(); renderLocList(); save();
   });
-  lblPosRow.appendChild(arrowBtn);
-  panel.appendChild(lblPosRow);
+  posExtraRow.appendChild(arrowBtn);
+  panel.appendChild(posExtraRow);
+
+  // ── Advanced label options (collapsed by default) ────────────────────────────
+  const advToggle = document.createElement('button');
+  advToggle.className = 'sp-section-toggle' + (showAdvancedLabel ? ' open' : '');
+  advToggle.textContent = `${showAdvancedLabel ? '▾' : '▸'} Advanced label`;
+  advToggle.addEventListener('click', () => { showAdvancedLabel = !showAdvancedLabel; renderLocList(); });
+  panel.appendChild(advToggle);
+  const adv = document.createElement('div');
+  adv.className = 'lep-advanced';
 
   // Drag hint + Reset position
   const dragRow = document.createElement('div'); dragRow.className = 'lep-row';
@@ -1332,30 +1784,32 @@ function makeLocEditPanel(locIdx) {
   const resetBtn = document.createElement('button');
   resetBtn.className = 'sp-btn'; resetBtn.textContent = 'Reset';
   resetBtn.addEventListener('click', () => {
-    locations[locIdx].labelOffsetX = 0; locations[locIdx].labelOffsetY = 0; locations[locIdx].labelWidth = null;
-    buildTooltipStyles(); save();
+    const l = locations[locIdx];
+    const off = defaultLabelOffset(l.labelPos || 'right', l.markerSize ?? 18);
+    l.labelOffsetX = off.x; l.labelOffsetY = off.y; l.labelWidth = null;
+    rebuildMarkers(); renderLocList(); save();
   });
   dragRow.appendChild(resetBtn);
-  panel.appendChild(dragRow);
+  adv.appendChild(dragRow);
 
   // Roundness slider
   const roundRow = document.createElement('div'); roundRow.className = 'lep-row';
   roundRow.innerHTML = '<span class="lep-label">Round</span>';
   const roundSlider = document.createElement('input');
-  roundSlider.type='range'; roundSlider.min=0; roundSlider.max=20; roundSlider.step=1;
+  roundSlider.type='range'; roundSlider.min=0; roundSlider.max=40; roundSlider.step=1;
   roundSlider.value = loc.labelRound ?? 4; roundSlider.className = 'sp-slider';
   const roundVal = document.createElement('span'); roundVal.className = 'sp-slider-val';
   roundVal.textContent = `${loc.labelRound ?? 4}px`;
   roundSlider.addEventListener('input', () => { roundVal.textContent = `${roundSlider.value}px`; });
   roundSlider.addEventListener('change', () => { locations[locIdx].labelRound = parseInt(roundSlider.value); buildTooltipStyles(); save(); });
   roundRow.appendChild(roundSlider); roundRow.appendChild(roundVal);
-  panel.appendChild(roundRow);
+  adv.appendChild(roundRow);
 
   // Font size slider
   const lblSizeRow = document.createElement('div'); lblSizeRow.className = 'lep-row';
   lblSizeRow.innerHTML = '<span class="lep-label">Size</span>';
   const sizeSlider = document.createElement('input');
-  sizeSlider.type='range'; sizeSlider.min=8; sizeSlider.max=18; sizeSlider.step=1;
+  sizeSlider.type='range'; sizeSlider.min=8; sizeSlider.max=48; sizeSlider.step=1;
   sizeSlider.value = loc.labelSize ?? 11; sizeSlider.className = 'sp-slider';
   const sizeVal = document.createElement('span'); sizeVal.className = 'sp-slider-val';
   sizeVal.textContent = `${loc.labelSize ?? 11}px`;
@@ -1368,15 +1822,15 @@ function makeLocEditPanel(locIdx) {
     save();
   });
   lblSizeRow.appendChild(sizeSlider); lblSizeRow.appendChild(sizeVal);
-  panel.appendChild(lblSizeRow);
+  adv.appendChild(lblSizeRow);
 
   const numSizeRow = document.createElement('div');
   numSizeRow.className = 'lep-row';
   numSizeRow.innerHTML = '<span class="lep-label"># size</span>';
   const numSizeSlider = document.createElement('input');
   numSizeSlider.type = 'range';
-  numSizeSlider.min = 50;
-  numSizeSlider.max = 180;
+  numSizeSlider.min = 20;
+  numSizeSlider.max = 400;
   numSizeSlider.step = 5;
   numSizeSlider.value = loc.labelNumberSize ?? 85;
   numSizeSlider.className = 'sp-slider';
@@ -1393,7 +1847,7 @@ function makeLocEditPanel(locIdx) {
   });
   numSizeRow.appendChild(numSizeSlider);
   numSizeRow.appendChild(numSizeVal);
-  panel.appendChild(numSizeRow);
+  adv.appendChild(numSizeRow);
 
   const alignRow = document.createElement('div');
   alignRow.className = 'lep-row';
@@ -1415,7 +1869,7 @@ function makeLocEditPanel(locIdx) {
     });
     alignRow.appendChild(btn);
   });
-  panel.appendChild(alignRow);
+  adv.appendChild(alignRow);
 
   // Text / BG / Border color pickers
   [
@@ -1450,7 +1904,7 @@ function makeLocEditPanel(locIdx) {
       });
       row.appendChild(clearBtn);
     }
-    panel.appendChild(row);
+    adv.appendChild(row);
   });
 
   // Apply all labels button
@@ -1468,9 +1922,211 @@ function makeLocEditPanel(locIdx) {
     rebuildMarkers(); renderLocList(); save();
   });
   lblAllRow.appendChild(lblAllBtn);
-  panel.appendChild(lblAllRow);
+  adv.appendChild(lblAllRow);
+
+  if (showAdvancedLabel) panel.appendChild(adv);
 
   return panel;
+}
+
+// ── Bulk edit panels (multi-selection) ────────────────────────────────────────
+// Compact panels shown when several routes/stops are selected; each control writes
+// to every selected item at once. Intentionally a small, common subset of options.
+function makeBulkRoutePanel(idxs) {
+  const panel = document.createElement('div');
+  panel.className = 'style-panel';
+  const first = routes[idxs[0]] || {};
+  const apply = fn => idxs.forEach(i => { if (routes[i]) fn(routes[i]); });
+  const refresh = async () => { await rebuildAllRoutes(); renderLocList(); save(); };
+  // Slider edits must not re-render the panel (would reset the slider mid-drag).
+  const refreshRoutesOnly = async () => { await rebuildAllRoutes(); save(); };
+
+  const colorRow = document.createElement('div');
+  colorRow.className = 'sp-row-wrap';
+  colorRow.innerHTML = '<span class="sp-label">Color</span>';
+  const td = document.createElement('div');
+  td.className = 'swatch';
+  td.style.background = 'repeating-linear-gradient(45deg,#888,#888 3px,#bbb 3px,#bbb 6px)';
+  td.title = 'Type default';
+  td.addEventListener('click', async () => { apply(r => { r.color = null; }); await refresh(); });
+  colorRow.appendChild(td);
+  SOLID_COLORS.forEach(hex => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch'; sw.style.background = hex; sw.title = hex;
+    sw.addEventListener('click', async () => { apply(r => { r.color = hex; }); await refresh(); });
+    colorRow.appendChild(sw);
+  });
+  const cw = document.createElement('div'); cw.className = 'swatch-custom'; cw.title = 'Custom color';
+  const fill = document.createElement('div'); fill.className = 'swatch-custom-fill';
+  const ci = document.createElement('input'); ci.type = 'color'; ci.value = '#3498db';
+  ci.addEventListener('input', async () => { apply(r => { r.color = ci.value; }); await refresh(); });
+  cw.appendChild(fill); cw.appendChild(ci); colorRow.appendChild(cw);
+  panel.appendChild(colorRow);
+
+  const mkBtnRow = (label, pairs, fn) => {
+    const row = document.createElement('div'); row.className = 'sp-row';
+    row.innerHTML = `<span class="sp-label">${label}</span>`;
+    pairs.forEach(([key, text]) => {
+      const b = document.createElement('button'); b.className = 'sp-btn'; b.textContent = text;
+      b.addEventListener('click', async () => { apply(r => fn(r, key)); await refresh(); });
+      row.appendChild(b);
+    });
+    panel.appendChild(row);
+  };
+  mkBtnRow('Dash', [['solid', '———'], ['dashed', '– –'], ['dotted', '· · ·'], ['dashdot', '–·–'], ['default', 'Auto']], (r, k) => { r.dash = k; });
+  mkBtnRow('Line', [['route', 'Route'], ['curve', 'Curve']], (r, k) => { r.shape = k; });
+
+  const widthRow = document.createElement('div'); widthRow.className = 'sp-row';
+  widthRow.innerHTML = '<span class="sp-label">Width</span>';
+  const initWidth = first.weight ?? (ROUTE_META[first.type] ? ROUTE_META[first.type].weight : 4);
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 1; slider.max = 24; slider.step = 1; slider.value = initWidth; slider.className = 'sp-slider';
+  const val = document.createElement('span'); val.className = 'sp-slider-val'; val.textContent = `${initWidth}`;
+  slider.addEventListener('input', () => { val.textContent = slider.value; });
+  slider.addEventListener('change', async () => { const v = parseInt(slider.value, 10); apply(r => { r.weight = v; }); await refreshRoutesOnly(); });
+  widthRow.appendChild(slider); widthRow.appendChild(val); panel.appendChild(widthRow);
+
+  // Density — only when a selected route uses a patterned dash
+  if (idxs.some(i => DASH_PATTERNS[routes[i]?.dash])) {
+    const densRow = document.createElement('div'); densRow.className = 'sp-row';
+    densRow.innerHTML = '<span class="sp-label">Density</span>';
+    const initDens = first.dashScale ?? 1;
+    const dens = document.createElement('input');
+    dens.type = 'range'; dens.min = 0.5; dens.max = 3; dens.step = 0.25; dens.value = initDens; dens.className = 'sp-slider';
+    const densVal = document.createElement('span'); densVal.className = 'sp-slider-val'; densVal.textContent = `${initDens}×`;
+    dens.addEventListener('input', () => { densVal.textContent = `${dens.value}×`; });
+    dens.addEventListener('change', async () => { const v = parseFloat(dens.value); apply(r => { r.dashScale = v; }); await refreshRoutesOnly(); });
+    densRow.appendChild(dens); densRow.appendChild(densVal); panel.appendChild(densRow);
+  }
+
+  panel.appendChild(makeRouteEmojiRow());
+
+  return panel;
+}
+
+function makeBulkLocPanel(idxs) {
+  const panel = document.createElement('div');
+  panel.className = 'loc-edit-panel';
+  const first = locations[idxs[0]] || {};
+  const apply = fn => idxs.forEach(i => { if (locations[i]) fn(locations[i]); });
+  const refresh = () => { rebuildMarkers(); renderLocList(); save(); };
+  // Slider edits update the map but must NOT re-render this panel (that would
+  // reset the slider/indicator mid-drag); they reflect the first selected stop.
+  const refreshMarkersOnly = () => { rebuildMarkers(); save(); };
+
+  const colorRow = document.createElement('div');
+  colorRow.className = 'sp-row-wrap';
+  colorRow.innerHTML = '<span class="lep-label">Color</span>';
+  SOLID_COLORS.forEach(hex => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch'; sw.style.background = hex; sw.title = hex;
+    sw.addEventListener('click', () => { apply(l => { l.markerColor = hex; }); refresh(); });
+    colorRow.appendChild(sw);
+  });
+  const cw = document.createElement('div'); cw.className = 'swatch-custom'; cw.title = 'Custom color';
+  const fill = document.createElement('div'); fill.className = 'swatch-custom-fill';
+  const ci = document.createElement('input'); ci.type = 'color'; ci.value = '#89b4fa';
+  ci.addEventListener('input', () => { apply(l => { l.markerColor = ci.value; }); refresh(); });
+  cw.appendChild(fill); cw.appendChild(ci); colorRow.appendChild(cw);
+  panel.appendChild(colorRow);
+
+  // Border color
+  const borderRow = document.createElement('div'); borderRow.className = 'sp-row';
+  borderRow.innerHTML = '<span class="lep-label">Border</span>';
+  const bInput = document.createElement('input'); bInput.type = 'color';
+  bInput.value = first.markerBorderColor || '#ffffff';
+  bInput.style.cssText = 'width:34px;height:24px;border:none;border-radius:5px;cursor:pointer;padding:1px;flex-shrink:0;';
+  bInput.addEventListener('input', () => { apply(l => { l.markerBorderColor = bInput.value; }); refreshMarkersOnly(); });
+  const bReset = document.createElement('button'); bReset.className = 'sp-btn'; bReset.textContent = 'Default';
+  bReset.addEventListener('click', () => { apply(l => { l.markerBorderColor = null; }); refresh(); });
+  borderRow.appendChild(bInput); borderRow.appendChild(bReset);
+  panel.appendChild(borderRow);
+
+  const shapeRow = document.createElement('div'); shapeRow.className = 'sp-row';
+  shapeRow.innerHTML = '<span class="lep-label">Shape</span>';
+  Object.entries(LOC_SHAPES).forEach(([key, s]) => {
+    const b = document.createElement('button'); b.className = 'shape-btn'; b.textContent = s.label; b.title = key;
+    b.addEventListener('click', () => { apply(l => { l.shape = key; }); refresh(); });
+    shapeRow.appendChild(b);
+  });
+  panel.appendChild(shapeRow);
+
+  const sizeRow = document.createElement('div'); sizeRow.className = 'sp-row';
+  sizeRow.innerHTML = '<span class="lep-label">Size</span>';
+  const slider = document.createElement('input');
+  slider.type = 'range'; slider.min = 8; slider.max = 80; slider.step = 1; slider.value = first.markerSize ?? 18; slider.className = 'sp-slider';
+  const val = document.createElement('span'); val.className = 'sp-slider-val'; val.textContent = `${first.markerSize ?? 18}`;
+  slider.addEventListener('input', () => { val.textContent = slider.value; });
+  slider.addEventListener('change', () => { const v = parseInt(slider.value, 10); apply(l => { l.markerSize = v; }); refreshMarkersOnly(); });
+  sizeRow.appendChild(slider); sizeRow.appendChild(val); panel.appendChild(sizeRow);
+
+  // Ring gap — only when at least one selected pin uses the ring shape
+  if (idxs.some(i => (locations[i]?.shape) === 'ring')) {
+    const gapRow = document.createElement('div'); gapRow.className = 'sp-row';
+    gapRow.innerHTML = '<span class="lep-label">Ring gap</span>';
+    const gapSlider = document.createElement('input');
+    gapSlider.type = 'range'; gapSlider.min = 0; gapSlider.max = 80; gapSlider.step = 1; gapSlider.value = first.ringGap ?? 6; gapSlider.className = 'sp-slider';
+    const gapVal = document.createElement('span'); gapVal.className = 'sp-slider-val'; gapVal.textContent = `${first.ringGap ?? 6}%`;
+    gapSlider.addEventListener('input', () => { gapVal.textContent = `${gapSlider.value}%`; });
+    gapSlider.addEventListener('change', () => { const v = parseInt(gapSlider.value, 10); apply(l => { l.ringGap = v; }); refreshMarkersOnly(); });
+    gapRow.appendChild(gapSlider); gapRow.appendChild(gapVal); panel.appendChild(gapRow);
+  }
+
+  const modeRow = document.createElement('div'); modeRow.className = 'sp-row';
+  modeRow.innerHTML = '<span class="lep-label">Label</span>';
+  [['always', 'Always'], ['hover', 'Hover'], ['hidden', 'Hidden']].forEach(([key, label]) => {
+    const b = document.createElement('button'); b.className = 'sp-btn'; b.textContent = label;
+    b.addEventListener('click', () => { apply(l => { l.labelMode = key; }); refresh(); });
+    modeRow.appendChild(b);
+  });
+  panel.appendChild(modeRow);
+
+  const posRow = document.createElement('div'); posRow.className = 'sp-row top';
+  posRow.innerHTML = '<span class="lep-label">Position</span>';
+  posRow.appendChild(makeLabelPosGrid(null, pos => {
+    apply(l => { l.labelPos = pos; const o = defaultLabelOffset(pos, l.markerSize ?? 18); l.labelOffsetX = o.x; l.labelOffsetY = o.y; });
+    refresh();
+  }));
+  panel.appendChild(posRow);
+
+  return panel;
+}
+
+// ── Drag-and-drop reordering ──────────────────────────────────────────────────
+let dragSrcIdx = null;
+function clearDragMarkers() {
+  document.querySelectorAll('.list-item').forEach(el =>
+    el.classList.remove('dragging', 'drag-over-top', 'drag-over-bottom'));
+}
+function attachDragReorder(item, i) {
+  item.addEventListener('dragstart', e => {
+    dragSrcIdx = i;
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', String(i)); } catch {}
+  });
+  item.addEventListener('dragend', () => { dragSrcIdx = null; clearDragMarkers(); });
+  item.addEventListener('dragover', e => {
+    if (dragSrcIdx === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = item.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    item.classList.toggle('drag-over-bottom', after);
+    item.classList.toggle('drag-over-top', !after);
+  });
+  item.addEventListener('dragleave', () => item.classList.remove('drag-over-top', 'drag-over-bottom'));
+  item.addEventListener('drop', e => {
+    e.preventDefault();
+    if (dragSrcIdx === null) return;
+    const r = item.getBoundingClientRect();
+    const after = e.clientY > r.top + r.height / 2;
+    let to = i + (after ? 1 : 0);
+    if (dragSrcIdx < to) to -= 1;          // account for removal of the dragged item
+    const from = dragSrcIdx;
+    dragSrcIdx = null; clearDragMarkers();
+    if (from !== to) moveLocation(from, to);
+  });
 }
 
 // ── Render location list ──────────────────────────────────────────────────────
@@ -1497,6 +2153,8 @@ function renderLocList() {
 
   if (!locations.length) {
     el.innerHTML = '<div class="empty-hint">Search a place or click "Pick on map" to start your trip.</div>';
+    clearSelection();
+    renderDetailPanel();
     return;
   }
 
@@ -1519,28 +2177,26 @@ function renderLocList() {
         swatch.style.cssText = `width:8px;height:8px;border-radius:50%;background:${r.color ?? ROUTE_META[r.type].color};flex-shrink:0;`;
         row.appendChild(swatch);
         const toggle = document.createElement('button');
-        toggle.className = 'style-toggle' + (expandedIdx === rIdx ? ' open' : '');
-        toggle.textContent = '✦'; toggle.title = 'Style segment';
-        toggle.addEventListener('click', () => {
-          expandedIdx = expandedIdx === rIdx ? null : rIdx;
-          expandedPalette = null;
+        toggle.className = 'style-toggle' + (sel.kind === 'route' && sel.idxs.includes(rIdx) ? ' open' : '');
+        toggle.textContent = '✦'; toggle.title = 'Style segment (Shift+click to select multiple)';
+        toggle.addEventListener('click', e => {
+          selectItem('route', rIdx, clickMods(e));
           renderLocList();
         });
         row.appendChild(toggle);
       }
       conn.appendChild(row);
 
-      // Style panel (expanded)
-      if (r && expandedIdx === rIdx) conn.appendChild(makeStylePanel(rIdx, r));
-
       el.appendChild(conn);
     }
 
     const item = document.createElement('div');
     item.className = 'list-item'; item.id = `loc-item-${i}`;
+    item.draggable = true;
     const sub = [loc.date, `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`].filter(Boolean).join(' · ');
     item.innerHTML =
-      `<div class="loc-num" style="background:${loc.markerColor||'var(--accent)'};">${i+1}</div>
+      `<span class="drag-handle" title="Drag to reorder">⠿</span>
+       <div class="loc-num" style="background:${loc.markerColor||'var(--accent)'};">${i+1}</div>
        <div class="item-body">
          <div class="item-name">${loc.name}</div>
          <div class="item-sub">${sub}</div>
@@ -1548,16 +2204,29 @@ function renderLocList() {
        <button class="btn-sm edit" title="Edit">${ICONS.edit}</button>
        <button class="btn-sm fly"  title="Fly to">${ICONS.flyTo}</button>
        <button class="btn-sm del"  title="Remove">${ICONS.del}</button>`;
-    item.querySelector('.edit').addEventListener('click', () => {
-      expandedLocIdx = expandedLocIdx === i ? null : i;
+    // Click anywhere on the row (except the action buttons) to select it; Shift =
+    // range, Ctrl/Cmd = toggle. The Edit button does the same (single by default).
+    item.addEventListener('click', e => {
+      if (e.target.closest('.btn-sm')) return;
+      selectItem('loc', i, clickMods(e));
+      renderLocList();
+    });
+    item.querySelector('.edit').addEventListener('click', e => {
+      selectItem('loc', i, clickMods(e));
       renderLocList();
     });
     item.querySelector('.fly').addEventListener('click', () => map.flyTo([loc.lat, loc.lng], 10));
     item.querySelector('.del').addEventListener('click', () => deleteLocation(i));
+    attachDragReorder(item, i);
     el.appendChild(item);
-
-    if (expandedLocIdx === i) el.appendChild(makeLocEditPanel(i));
   });
+
+  // Highlight every selected row so the list reads as active while editing.
+  if (sel.kind === 'loc') {
+    sel.idxs.forEach(i => el.querySelector(`#loc-item-${i}`)?.classList.add('selected'));
+  }
+
+  renderDetailPanel();
 
   const restoreScroll = () => {
     el.scrollTop = listScrollTop;
@@ -1565,6 +2234,65 @@ function renderLocList() {
   };
   restoreScroll();
   requestAnimationFrame(restoreScroll);
+}
+
+// ── Detail panel (right side) ───────────────────────────────────────────────────
+// Hosts the style/edit controls for the currently-selected route segment or stop,
+// so they no longer crowd the left list. Mutually exclusive: at most one is open.
+function renderDetailPanel() {
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+  rememberPanelScrollPositions(panel);
+  panel.innerHTML = '';
+
+  // Drop any selected indices that no longer exist (after deletes, etc.).
+  if (sel.kind === 'route') sel.idxs = sel.idxs.filter(i => routes[i]);
+  if (sel.kind === 'loc')   sel.idxs = sel.idxs.filter(i => locations[i]);
+  if (!sel.idxs.length) sel.kind = null;
+
+  let title = '', content = null;
+  if (sel.kind === 'route' && sel.idxs.length === 1) {
+    const i = sel.idxs[0], r = routes[i];
+    title = `${TYPE_EMOJI[r.type] || ''} Segment ${r.fromIdx + 1} → ${r.toIdx + 1}`;
+    content = makeStylePanel(i, r);
+  } else if (sel.kind === 'route' && sel.idxs.length > 1) {
+    title = `${sel.idxs.length} segments`;
+    content = makeBulkRoutePanel([...sel.idxs]);
+  } else if (sel.kind === 'loc' && sel.idxs.length === 1) {
+    const i = sel.idxs[0];
+    title = `Stop ${i + 1} · ${locations[i].name}`;
+    content = makeLocEditPanel(i);
+  } else if (sel.kind === 'loc' && sel.idxs.length > 1) {
+    title = `${sel.idxs.length} stops`;
+    content = makeBulkLocPanel([...sel.idxs]);
+  }
+
+  if (!content) {
+    panel.classList.add('is-empty');
+    panel.innerHTML = '<div class="detail-empty">Select a stop or route segment to style it.<br><br>Shift+click to select several and edit them together.</div>';
+    return;
+  }
+
+  panel.classList.remove('is-empty');
+  const header = document.createElement('div');
+  header.className = 'detail-header';
+  const titleEl = document.createElement('span');
+  titleEl.className = 'detail-title';
+  titleEl.textContent = title;
+  const close = document.createElement('button');
+  close.className = 'btn-icon';
+  close.title = 'Close';
+  close.innerHTML = ICONS.del;
+  close.addEventListener('click', () => { clearSelection(); renderLocList(); });
+  header.appendChild(titleEl);
+  header.appendChild(close);
+  panel.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'detail-body';
+  body.appendChild(content);
+  panel.appendChild(body);
+  restorePanelScrollPositions(panel);
 }
 
 // ── Change route type ─────────────────────────────────────────────────────────
@@ -1580,8 +2308,10 @@ async function changeRouteType(idx, newType) {
 function fitAll() {
   if (!locations.length) return;
   map.invalidateSize();
-  const bounds = L.latLngBounds(locations.map(l => [l.lat, l.lng])).pad(0.22);
-  map.fitBounds(bounds, { maxZoom: 12 });
+  const bounds = L.latLngBounds(locations.map(l => [l.lat, l.lng]));
+  // Tight pixel padding (instead of a large ratio pad) keeps the view close to the
+  // cluster; a higher maxZoom lets small/single-stop trips zoom in meaningfully.
+  map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -1592,12 +2322,15 @@ function save() {
 
 function normalizeRoute(r) {
   const shape = r.shape === 'curve' ? 'curve' : 'route';
+  const cc = r.curveCtrl;
   return {
     fromIdx: r.fromIdx, toIdx: r.toIdx, type: r.type || 'car',
     color:  r.color  ?? (r.colorMode === 'custom' ? r.customColor : null),
     dash:   r.dash   ?? (r.style === 'dashed' ? 'dashed' : r.style === 'dotted' ? 'dotted' : 'solid'),
+    dashScale: Number.isFinite(r.dashScale) ? r.dashScale : 1,
     shape,
     weight: r.weight ?? null,
+    curveCtrl: cc && Number.isFinite(cc.lat) && Number.isFinite(cc.lng) ? { lat: cc.lat, lng: cc.lng } : null,
   };
 }
 
@@ -1607,9 +2340,9 @@ const _customCssEl = (() => {
   document.head.appendChild(el); return el;
 })();
 
-function applyCustomCss(css) {
+function applyCustomCss(css, { persist = true } = {}) {
   _customCssEl.textContent = css || '';
-  localStorage.setItem('trip-mapper-custom-css', css || '');
+  if (persist) localStorage.setItem('trip-mapper-custom-css', css || '');
 }
 
 function loadCustomCss() {
@@ -1621,6 +2354,11 @@ function currentSettings() {
     uiTheme: document.documentElement.getAttribute('data-theme') || 'dark',
     mapTheme: document.getElementById('theme-select').value || 'voyager',
     labelFont: document.getElementById('label-font-select').value || 'Noto Sans KR',
+    numberFont: document.getElementById('number-font-select').value || 'Noto Sans KR',
+    showRouteEmoji,
+    routeEmojiSize,
+    customPalettes: customPalettes.map(p => ({ name: p.name, colors: [...p.colors] })),
+    customCss: localStorage.getItem('trip-mapper-custom-css') || '',
     paletteOrder: paletteOrderSettings(),
   };
 }
@@ -1638,13 +2376,26 @@ function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   const uiTheme = settings.uiTheme || localStorage.getItem('trip-mapper-ui-theme') || 'dark';
   const mapTheme = settings.mapTheme || localStorage.getItem('trip-mapper-map-theme') || 'voyager';
   const labelFont = settings.labelFont || settings.font || localStorage.getItem('trip-mapper-label-font') || localStorage.getItem('trip-mapper-font') || 'Noto Sans KR';
+  // Number font defaults to the label font so existing trips keep their look.
+  const numberFont = settings.numberFont || localStorage.getItem('trip-mapper-number-font') || labelFont;
+  showRouteEmoji = settings.showRouteEmoji ?? (localStorage.getItem('trip-mapper-route-emoji') === '1');
+  routeEmojiSize = settings.routeEmojiSize ?? (parseInt(localStorage.getItem('trip-mapper-route-emoji-size'), 10) || 16);
+  if (Array.isArray(settings.customPalettes)) {
+    customPalettes = settings.customPalettes.filter(p => p && p.name && Array.isArray(p.colors));
+    saveCustomPalettes();
+  }
 
   applyPaletteOrderSettings(settings.paletteOrder || {});
   applyUiTheme(uiTheme, { persist });
   document.getElementById('theme-select').value = mapTheme;
   setMapTheme(mapTheme);
+  if (labelFont.startsWith(LOCAL_FONT_PREFIX)) addLocalFontOption(labelFont.slice(LOCAL_FONT_PREFIX.length));
+  if (numberFont.startsWith(LOCAL_FONT_PREFIX)) addLocalFontOption(numberFont.slice(LOCAL_FONT_PREFIX.length));
   document.getElementById('label-font-select').value = labelFont;
+  document.getElementById('number-font-select').value = numberFont;
   applyLabelFont(labelFont, { persist });
+  applyNumberFont(numberFont, { persist });
+  if (settings.customCss != null) applyCustomCss(settings.customCss, { persist });
 }
 
 async function applyTripData(data, { persist = true } = {}) {
@@ -1652,9 +2403,7 @@ async function applyTripData(data, { persist = true } = {}) {
   locations = (d.locations || []).map(normalizeLoc);
   routes = (d.routes || []).map(normalizeRoute);
   applyTripSettings(d.settings || {}, { persist });
-  expandedIdx = null;
-  expandedPalette = null;
-  expandedLocIdx = null;
+  clearSelection();
   await rebuildAll();
   fitAll();
   if (persist) save();
@@ -1687,7 +2436,7 @@ async function loadTripFromUrl(url) {
 async function rebuildAll() {
   clearLocMarkers();
   routeLayers.forEach((_, i) => clearRouteLayer(i));
-  routeLayers = [];
+  routeLayers = []; routeHitLayers = []; routeEmojiMarkers = [];
   buildTooltipStyles();
   locations.forEach(addLocMarker);
   for (let i = 0; i < routes.length; i++) await drawRoute(i);
@@ -1696,7 +2445,7 @@ async function rebuildAll() {
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
-  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', shape: 'route', weight: null };
+  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null };
 }
 
 async function addLocationAuto(name, lat, lng) {
@@ -1724,9 +2473,8 @@ async function deleteLocation(idx) {
 
   clearLocMarkers();
   routeLayers.forEach((_, i) => clearRouteLayer(i));
-  routeLayers = [];
-  expandedIdx = null;
-  expandedLocIdx = expandedLocIdx === idx ? null : expandedLocIdx > idx ? expandedLocIdx - 1 : expandedLocIdx;
+  routeLayers = []; routeHitLayers = []; routeEmojiMarkers = [];
+  clearSelection();  // indices shift after removal — simplest to reset selection
 
   locations.splice(idx, 1);
   routes = routes.filter(r => r.fromIdx !== idx && r.toIdx !== idx);
@@ -1742,6 +2490,25 @@ async function deleteLocation(idx) {
 
   locations.forEach(addLocMarker);
   for (let i = 0; i < routes.length; i++) await drawRoute(i);
+  renderLocList(); save();
+}
+
+// Reorder a stop (drag-and-drop in the list). Pin numbers follow the new order and
+// routes re-link consecutive stops automatically, keeping each segment's style by
+// position. Curve geometry is reset since a segment now joins different stops.
+async function moveLocation(from, to) {
+  if (from === to || from < 0 || to < 0 || from >= locations.length || to >= locations.length) return;
+  const [item] = locations.splice(from, 1);
+  locations.splice(to, 0, item);
+  const newRoutes = [];
+  for (let i = 0; i < locations.length - 1; i++) {
+    const r = routes[i] || makeRoute(i, i + 1);
+    r.fromIdx = i; r.toIdx = i + 1; r.curveCtrl = null;
+    newRoutes.push(r);
+  }
+  routes = newRoutes;
+  clearSelection();
+  await rebuildAll();
   renderLocList(); save();
 }
 
@@ -1855,15 +2622,20 @@ const embedWarn     = document.getElementById('embed-warn');
 function buildEmbedCode() {
   const jsonPath = embedPathIn.value.trim();
   const base     = `${location.origin}${location.pathname}`;
+  const interactive = document.getElementById('embed-interactive').checked;
+  const fontVal  = document.getElementById('embed-font').value.trim();
+  // Interactive embeds keep pan/zoom/hover; static ones freeze the map.
+  const flags    = interactive ? 'embed=1' : 'embed=1&static=1';
+  const fontParam = fontVal ? `&font=${encodeURIComponent(fontVal)}` : '';
   let src, warn = '';
 
   if (jsonPath) {
     const tripUrl = jsonPath.startsWith('http') ? jsonPath : `${location.origin}/${jsonPath.replace(/^\//, '')}`;
-    src = `${base}?embed=1&static=1&trip=${encodeURIComponent(tripUrl)}`;
+    src = `${base}?${flags}${fontParam}&trip=${encodeURIComponent(tripUrl)}`;
   } else {
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(makeTripData()))))
                   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    src = `${base}?embed=1&static=1&data=${b64}`;
+    src = `${base}?${flags}${fontParam}&data=${b64}`;
     if (src.length > 8000) warn = `URL is ${src.length} chars — too large for most browsers. Export JSON, host it, and enter the path above.`;
   }
 
@@ -1884,6 +2656,8 @@ document.getElementById('btn-embed').addEventListener('click', () => {
   embedModal.hidden = false;
 });
 embedPathIn.addEventListener('input', buildEmbedCode);
+document.getElementById('embed-interactive').addEventListener('change', buildEmbedCode);
+document.getElementById('embed-font').addEventListener('input', buildEmbedCode);
 document.getElementById('embed-copy-btn').addEventListener('click', () => {
   navigator.clipboard.writeText(embedCodeArea.value)
     .then(() => toast('Embed code copied!'))
@@ -1893,6 +2667,50 @@ function closeEmbedModal() { embedModal.hidden = true; }
 document.getElementById('embed-modal-close').addEventListener('click', closeEmbedModal);
 document.getElementById('embed-close-btn').addEventListener('click', closeEmbedModal);
 embedModal.addEventListener('click', e => { if (e.target === embedModal) closeEmbedModal(); });
+
+// ── Image export (screenshot) ─────────────────────────────────────────────────
+// Renders the live map element to a canvas with html2canvas, so pins, label
+// shapes/text, numbers and fonts match exactly. Optionally hides the basemap.
+function downloadBlob(blob, name) {
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function exportTripPng(transparent, includeMap) {
+  if (!locations.length) { toast('Nothing to export yet.'); return; }
+  if (typeof html2canvas !== 'function') { toast('Image library not loaded.'); return; }
+  const mapEl = document.getElementById('map');
+  // Hide map controls (and optionally the basemap tiles) just for the capture.
+  const hidden = [];
+  const hide = el => { if (el) { hidden.push([el, el.style.display]); el.style.display = 'none'; } };
+  hide(mapEl.querySelector('.leaflet-control-container'));
+  if (!includeMap) hide(mapEl.querySelector('.leaflet-tile-pane'));
+  try {
+    await (document.fonts ? document.fonts.ready : Promise.resolve());
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      backgroundColor: includeMap ? null : (transparent ? null : '#ffffff'),
+      scale: Math.min(Math.max(window.devicePixelRatio || 1, 1), 3),
+      logging: false,
+    });
+    canvas.toBlob(b => { if (b) downloadBlob(b, 'trip-map.png'); else toast('Export failed.'); }, 'image/png');
+  } catch (err) {
+    toast('Image export failed: ' + (err && err.message ? err.message : err));
+  } finally {
+    hidden.forEach(([el, d]) => { el.style.display = d; });
+  }
+}
+const imageModal = document.getElementById('image-modal');
+const imgTransparentEl = document.getElementById('image-transparent');
+const imgIncludeMapEl = document.getElementById('image-include-map');
+document.getElementById('btn-image').addEventListener('click', () => { imageModal.hidden = false; });
+// Transparent background only applies when the map basemap isn't included.
+imgIncludeMapEl.addEventListener('change', () => { imgTransparentEl.disabled = imgIncludeMapEl.checked; });
+function closeImageModal() { imageModal.hidden = true; }
+document.getElementById('image-modal-close').addEventListener('click', closeImageModal);
+document.getElementById('image-close-btn').addEventListener('click', closeImageModal);
+imageModal.addEventListener('click', e => { if (e.target === imageModal) closeImageModal(); });
+document.getElementById('image-png-btn').addEventListener('click', () => { exportTripPng(imgTransparentEl.checked, imgIncludeMapEl.checked); closeImageModal(); });
 
 // ── Custom CSS modal ──────────────────────────────────────────────────────────
 const cssModal    = document.getElementById('css-modal');
@@ -1912,6 +2730,19 @@ document.getElementById('css-reset-btn').addEventListener('click', () => {
   cssTextarea.value = '';
   applyCustomCss('');
 });
+
+// Custom palettes modal wiring
+const palettesModal = document.getElementById('palettes-modal');
+document.getElementById('palette-new-btn').addEventListener('click', () => {
+  const taken = new Set([...Object.keys(PALETTES), ...customPalettes.map(p => p.name)]);
+  let n = customPalettes.length + 1, nm = `Custom ${n}`;
+  while (taken.has(nm)) { n++; nm = `Custom ${n}`; }
+  customPalettes.push({ name: nm, colors: ['#ff006e', '#3a86ff', '#06d6a0', '#ffbe0b'] });
+  saveCustomPalettes(); renderPalettesEditor();
+});
+document.getElementById('palettes-done-btn').addEventListener('click', closePalettesModal);
+document.getElementById('palettes-modal-close').addEventListener('click', closePalettesModal);
+palettesModal.addEventListener('click', e => { if (e.target === palettesModal) closePalettesModal(); });
 
 // ── Export / Import / Clear ───────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -1935,32 +2766,196 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   if (!confirm('Delete all locations and routes?')) return;
   clearLocMarkers();
   routeLayers.forEach((_, i) => clearRouteLayer(i));
-  locations = []; routes = []; routeLayers = []; expandedIdx = null;
+  locations = []; routes = []; routeLayers = []; routeHitLayers = []; routeEmojiMarkers = []; clearSelection();
   renderLocList(); save();
 });
+// Ctrl/Cmd+A selects all stops (unless typing in a field), for bulk editing.
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || (e.key !== 'a' && e.key !== 'A')) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (!locations.length) return;
+  e.preventDefault();
+  sel = { kind: 'loc', idxs: locations.map((_, i) => i) };
+  selAnchor = 0;
+  renderLocList();
+});
 
-// ── Font ──────────────────────────────────────────────────────────────────────
-let _labelFontLink = null;
-function applyLabelFont(name, { persist = true } = {}) {
-  const font = FONTS.find(f => f.name === name) || FONTS[0];
-  if (font.gf) {
-    if (!_labelFontLink) {
-      _labelFontLink = document.createElement('link');
-      _labelFontLink.rel = 'stylesheet'; document.head.appendChild(_labelFontLink);
-    }
-    _labelFontLink.href = `https://fonts.googleapis.com/css2?family=${font.gf}&display=swap`;
-  }
-  document.documentElement.style.setProperty('--label-font-family', font.stack);
-  if (persist) localStorage.setItem('trip-mapper-label-font', name);
+// Snap every label back to the tidy default position (marker edge + margin) for
+// its current side, clearing any hand-dragged offset and custom width.
+document.getElementById('btn-reset-labels').addEventListener('click', () => {
+  if (!locations.length) { toast('No labels to reset.'); return; }
+  if (!confirm('Reset all label positions to their defaults?')) return;
+  locations.forEach(l => {
+    const off = defaultLabelOffset(l.labelPos || 'right', l.markerSize ?? 18);
+    l.labelOffsetX = off.x; l.labelOffsetY = off.y; l.labelWidth = null;
+  });
+  rebuildMarkers(); renderLocList(); save();
+  toast('Label positions reset.');
+});
+
+// ── Fonts ───────────────────────────────────────────────────────────────────────
+// Values for locally-installed fonts are stored as "local:<family name>" so they
+// can be told apart from the bundled FONTS entries in the dropdowns and storage.
+const LOCAL_FONT_PREFIX = 'local:';
+
+// Wrap a locally-installed family with the same CJK/emoji fallbacks the bundled
+// stacks use, so non-Latin text still renders even when the chosen font lacks it.
+function localFontStack(family) {
+  const safe = family.replace(/"/g, '');
+  return `"${safe}","Noto Sans KR","Noto Serif KR","Noto Serif SC","Noto Serif TC",var(--emoji-font-family),system-ui,sans-serif`;
 }
-document.getElementById('label-font-select').addEventListener('change', e => applyLabelFont(e.target.value));
+
+// A font "slot" applies the chosen font to one CSS variable, lazily managing its
+// own Google-Fonts <link> and self-hosted <style>, and persisting the choice.
+function makeFontSlot({ cssVar, storageKey, cssId }) {
+  let link = null, styleEl = null;
+  return function apply(name, { persist = true } = {}) {
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = cssId; document.head.appendChild(styleEl); }
+    if (typeof name === 'string' && name.startsWith(LOCAL_FONT_PREFIX)) {
+      const family = name.slice(LOCAL_FONT_PREFIX.length);
+      if (link) link.href = '';                       // no remote webfont for local fonts
+      styleEl.textContent = '';
+      document.documentElement.style.setProperty(cssVar, localFontStack(family));
+    } else {
+      const font = FONTS.find(f => f.name === name) || FONTS[0];
+      if (font.gf) {
+        if (!link) { link = document.createElement('link'); link.rel = 'stylesheet'; document.head.appendChild(link); }
+        link.href = `https://fonts.googleapis.com/css2?family=${font.gf}&display=swap`;
+      } else if (link) {
+        link.href = '';
+      }
+      styleEl.textContent = font.css || '';
+      document.documentElement.style.setProperty(cssVar, font.stack);
+      name = font.name;                               // normalize when falling back to default
+    }
+    if (persist) localStorage.setItem(storageKey, name);
+    return name;
+  };
+}
+
+const applyLabelFont  = makeFontSlot({ cssVar: '--label-font-family',  storageKey: 'trip-mapper-label-font',  cssId: 'trip-mapper-label-font-css'  });
+const applyNumberFont = makeFontSlot({ cssVar: '--number-font-family', storageKey: 'trip-mapper-number-font', cssId: 'trip-mapper-number-font-css' });
+
+// Re-position permanent tooltips after a font swap, since the new (possibly web)
+// font changes label dimensions that Leaflet's positioning depends on.
+function repositionLabelsAfterFonts() {
+  applyAllTooltipLayoutStyles();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(applyAllTooltipLayoutStyles);
+}
+document.getElementById('label-font-select').addEventListener('change', e => { applyLabelFont(e.target.value); repositionLabelsAfterFonts(); });
+document.getElementById('number-font-select').addEventListener('change', e => { applyNumberFont(e.target.value); repositionLabelsAfterFonts(); });
+
+// ── Local (installed) fonts ─────────────────────────────────────────────────────
+// Uses the Local Font Access API (queryLocalFonts) where available — Chromium
+// browsers and the packaged extension. Adds each installed family to every picker.
+const FONT_SELECTS = ['label-font-select', 'number-font-select']
+  .map(id => document.getElementById(id))
+  .filter(Boolean);
+const _localFontGroups = new Map();   // select element -> its "Installed fonts" <optgroup>
+const _localFontNames = new Set();
+
+function ensureLocalFontGroup(select) {
+  let g = _localFontGroups.get(select);
+  if (g && g.isConnected) return g;
+  g = document.createElement('optgroup');
+  g.label = 'Installed fonts';
+  select.appendChild(g);
+  _localFontGroups.set(select, g);
+  return g;
+}
+
+// Adds a "local:" option to every picker (used both when enumerating and to
+// reflect a saved selection before the user has granted enumeration permission).
+function addLocalFontOption(family) {
+  if (_localFontNames.has(family)) return;
+  _localFontNames.add(family);
+  FONT_SELECTS.forEach(select => {
+    const opt = document.createElement('option');
+    opt.value = LOCAL_FONT_PREFIX + family;
+    opt.textContent = family;
+    ensureLocalFontGroup(select).appendChild(opt);
+  });
+}
+
+async function loadLocalFonts() {
+  if (!('queryLocalFonts' in window)) {
+    toast('Local fonts aren’t supported in this browser.');
+    return;
+  }
+  try {
+    const fonts = await window.queryLocalFonts();
+    const before = _localFontNames.size;
+    [...new Set(fonts.map(f => f.family))].sort((a, b) => a.localeCompare(b)).forEach(addLocalFontOption);
+    const added = _localFontNames.size - before;
+    toast(added ? `Loaded ${added} installed font${added === 1 ? '' : 's'}.` : 'No new fonts found.');
+  } catch (err) {
+    toast(err?.name === 'SecurityError' || err?.name === 'NotAllowedError'
+      ? 'Permission to read local fonts was denied.'
+      : 'Could not read local fonts.');
+  }
+}
+document.getElementById('btn-local-fonts').addEventListener('click', loadLocalFonts);
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// Populate label font select
-FONTS.forEach(f => {
-  const opt = document.createElement('option'); opt.value = f.name; opt.textContent = f.name;
-  document.getElementById('label-font-select').appendChild(opt);
+// Populate both font pickers with the bundled fonts.
+FONT_SELECTS.forEach(select => {
+  FONTS.forEach(f => {
+    const opt = document.createElement('option'); opt.value = f.name; opt.textContent = f.name;
+    select.appendChild(opt);
+  });
 });
+// Reflect any previously-selected local fonts immediately (full list returns on "+").
+[localStorage.getItem('trip-mapper-label-font'), localStorage.getItem('trip-mapper-number-font')]
+  .forEach(v => { if (v && v.startsWith(LOCAL_FONT_PREFIX)) addLocalFontOption(v.slice(LOCAL_FONT_PREFIX.length)); });
+
+// ── Panel resize handles ─────────────────────────────────────────────────────────
+// Drag the dividers to set the left sidebar and right detail-panel widths; both
+// persist. Widths are confined to sane bounds; the map is kept in sync on drag.
+function setupPanelResize() {
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  const SIDEBAR = { min: 190, max: 560, key: 'trip-mapper-sidebar-width' };
+  const DETAIL  = { min: 220, max: 620, key: 'trip-mapper-detail-width'  };
+  const sidebar = document.getElementById('sidebar');
+  const detail  = document.getElementById('detail-panel');
+
+  const savedS = parseInt(localStorage.getItem(SIDEBAR.key), 10);
+  if (Number.isFinite(savedS)) sidebar.style.width = clamp(savedS, SIDEBAR.min, SIDEBAR.max) + 'px';
+  const savedD = parseInt(localStorage.getItem(DETAIL.key), 10);
+  if (Number.isFinite(savedD)) detail.style.width = clamp(savedD, DETAIL.min, DETAIL.max) + 'px';
+
+  // dir: +1 when dragging right grows the panel (left sidebar), -1 for the right panel.
+  function bindHandle(handleId, panel, dir, bounds) {
+    const handle = document.getElementById(handleId);
+    if (!handle) return;
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = panel.getBoundingClientRect().width;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      const onMove = ev => {
+        panel.style.width = clamp(startW + dir * (ev.clientX - startX), bounds.min, bounds.max) + 'px';
+        map.invalidateSize();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem(bounds.key, String(Math.round(panel.getBoundingClientRect().width)));
+        map.invalidateSize();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  bindHandle('resize-left',  sidebar, 1,  SIDEBAR);
+  bindHandle('resize-right', detail, -1,  DETAIL);
+}
 
 async function boot() {
   if (IS_EMBED) document.body.classList.add('embed-mode');
@@ -1975,8 +2970,9 @@ async function boot() {
   }
 
   loadCustomCss();
+  loadCustomPalettes();
   applyTripSettings();
-  if (!IS_EMBED) enableLabelDrag();
+  if (!IS_EMBED) { enableLabelDrag(); setupPanelResize(); }
 
   const tripUrl  = URL_PARAMS.get('trip');
   const tripData = URL_PARAMS.get('data');
@@ -1993,8 +2989,17 @@ async function boot() {
     fitAll();
   }
 
+  // Host-supplied font override (?font=…): the embedding site passes a font-family
+  // stack (e.g. "Georgia, serif") so the map's type matches their page.
+  const fontOverride = URL_PARAMS.get('font');
+  if (fontOverride) {
+    document.documentElement.style.setProperty('--label-font-family', fontOverride);
+    document.documentElement.style.setProperty('--number-font-family', fontOverride);
+    document.documentElement.style.setProperty('--ui-font-family', fontOverride);
+  }
+
   if (IS_EMBED) {
-    setTimeout(() => map.invalidateSize(), 0);
+    setTimeout(() => { map.invalidateSize(); fitAll(); }, 0);
   }
 }
 

@@ -1,6 +1,34 @@
 # trip-mapper
 
-A lightweight browser-based tool for mapping trips with custom stops, routes, and labels.
+A lightweight browser-based tool for mapping trips with custom stops, routes, and labels. Runs as a plain website *and* as a Chrome extension.
+
+## Install as a Chrome extension
+
+**From a release (easiest):** download `trip-mapper-extension.zip` from the
+[Releases](../../releases) page, unzip it, then:
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode** (top-right).
+3. Click **Load unpacked** and select the unzipped `trip-mapper` folder.
+4. Click the Trip Mapper toolbar icon — the app opens in a full browser tab.
+
+**From source:** clone the repo and Load unpacked the project folder directly.
+(The release zip is built by `.github/workflows/release.yml`: pushing a `v*` tag
+publishes a Release with the zip; running the workflow manually produces a
+downloadable build artifact.)
+
+Leaflet is vendored locally under `vendor/leaflet/`, so the app loads without a
+CDN. Map tiles, geocoding (Nominatim), and routing (OSRM) still require a network
+connection. The extension requests no special permissions.
+
+## Custom & local fonts
+
+The **Label Font** menu lists bundled web fonts plus the **`+`** button beside it,
+which loads fonts installed on your device via the
+[Local Font Access API](https://developer.mozilla.org/docs/Web/API/Window/queryLocalFonts)
+(Chromium browsers and the extension; the browser asks permission the first time).
+Installed fonts appear under an *Installed fonts* group and are saved with your
+other settings. Browsers without the API simply show the bundled fonts.
 
 ## Embedding a static map
 
@@ -46,6 +74,18 @@ The generated code looks like this:
   loading="lazy"
 ></iframe>
 ```
+
+---
+
+### Font embeds
+
+The selected **Label Font** is carried into exported JSON and generated iframe
+embeds. Bundled web fonts travel with the embed; locally-installed fonts only
+render on machines where that font is installed.
+
+Custom CSS from the **CSS** modal is also included in exported JSON and inline
+embed data, so iframe maps can load their own font rules instead of depending on
+the parent blog page.
 
 ---
 

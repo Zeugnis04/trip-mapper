@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Trip Mapper",
+  "version": "1.0.0",
+  "description": "Plan trips and visualize routes between stops on an interactive map.",
+  "action": {
+    "default_title": "Open Trip Mapper",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
