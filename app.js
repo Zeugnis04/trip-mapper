@@ -20,7 +20,7 @@ const ROUTE_META = {
   car:     { color: '#e67e22', dashArray: null,   weight: 4, routing: 'osrm-driving' },
   walk:    { color: '#27ae60', dashArray: '5 5',  weight: 3, routing: 'osrm-foot'    },
   bicycle: { color: '#f39c12', dashArray: '5 5',  weight: 3, routing: 'osrm-cycling' },
-  flight:  { color: '#3498db', dashArray: '10 6', weight: 2, routing: 'greatcircle'  },
+  flight:  { color: '#3498db', dashArray: '10 6', weight: 4, routing: 'greatcircle'  },
   ferry:   { color: '#16a085', dashArray: '5 10', weight: 3, routing: 'straight'     },
   subway:  { color: '#9b59b6', dashArray: null,   weight: 4, routing: 'straight'     },
   train:   { color: '#c0392b', dashArray: null,   weight: 4, routing: 'straight'     },
@@ -311,10 +311,14 @@ const IS_EMBED  = IS_STATIC || URL_PARAMS.get('embed') === '1' || URL_PARAMS.get
 // zoomSnap:0 lets the map settle on fractional zoom levels → smooth, continuous
 // zoom (incl. trackpad pinch, which the browser sends as ctrl+wheel). Higher
 // wheelPxPerZoomLevel makes each scroll notch a finer step.
+// preferCanvas: draw route lines on a <canvas> instead of SVG. html2canvas copies
+// canvas pixels exactly, so image export no longer offsets routes from the pins
+// (SVG overlay panes get re-rasterized at a slightly wrong position by html2canvas).
 const map = L.map('map', {
   zoomSnap: 0,
   zoomDelta: 0.5,
   wheelPxPerZoomLevel: 100,
+  preferCanvas: true,
 }).setView([20, 0], 2);
 let tileLayer = null;
 function setMapTheme(key) {
@@ -1366,6 +1370,28 @@ function makeStylePanel(routeIdx, route) {
   });
   allRow.appendChild(allBtn);
   panel.appendChild(allRow);
+
+  // — Assign this segment's full style to every segment of the SAME transport mode,
+  //   so each mode (car, flight, …) can carry its own look ("style by type") —
+  const typeStyleRow = document.createElement('div');
+  typeStyleRow.className = 'lep-row'; typeStyleRow.style.justifyContent = 'flex-end';
+  const sameType = routes.filter(r => r.type === route.type).length;
+  const typeStyleBtn = document.createElement('button');
+  typeStyleBtn.className = 'palette-apply';
+  typeStyleBtn.textContent = `↓ Apply style to all ${TYPE_EMOJI[route.type] || ''} ${route.type} (${sameType})`;
+  typeStyleBtn.title = `Copy this segment's full style — colour, dash, density, line shape, width and emoji — to every ${route.type} segment`;
+  typeStyleBtn.addEventListener('click', async () => {
+    const src = routes[routeIdx];
+    routes.forEach(r => {
+      if (r.type !== src.type) return;
+      r.color = src.color; r.dash = src.dash; r.dashScale = src.dashScale;
+      r.shape = src.shape; r.weight = src.weight;
+      r.emoji = src.emoji; r.emojiSize = src.emojiSize; r.emojiBg = src.emojiBg;
+    });
+    await rebuildAllRoutes(); renderLocList(); save();
+  });
+  typeStyleRow.appendChild(typeStyleBtn);
+  panel.appendChild(typeStyleRow);
 
   return panel;
 }
