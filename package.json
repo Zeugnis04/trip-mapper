@@ -1,6 +1,6 @@
 {
   "name": "trip-mapper",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Plan trips and visualize routes between stops on an interactive map. Runs as a website and a Chrome extension.",
   "private": true,
   "scripts": {
