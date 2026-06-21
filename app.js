@@ -89,34 +89,50 @@ function getPaletteColors(name) {
   return c ? c.colors : null;
 }
 
-// Mode-of-transport emoji controls (global: applies to every route), shown in the
-// route style panel. Off by default; size is S/M/L/XL. Persisted.
-function makeRouteEmojiRow() {
+// Mode-of-transport emoji controls — per segment. `targets` is one route index or an
+// array (bulk). On/Bg/size are stored on each route (route.emoji / emojiBg / emojiSize)
+// so every segment toggles independently. State shown reflects the first target.
+function makeRouteEmojiRow(targets) {
+  const ids = (Array.isArray(targets) ? targets : [targets]).filter(i => routes[i]);
+  const first = routes[ids[0]] || {};
+  const on = !!first.emoji;
+  const bg = !!first.emojiBg;
+  const sz = first.emojiSize ?? 16;
+  // Only the targeted segments' emoji markers need redrawing — not their geometry.
+  const apply = async (fn) => {
+    ids.forEach(i => { if (routes[i]) fn(routes[i]); });
+    ids.forEach(i => redrawRouteEmojiOnly(i));
+    renderLocList(); save();
+  };
+
   const row = document.createElement('div');
   row.className = 'sp-row';
   row.innerHTML = '<span class="sp-label">Emoji</span>';
 
   const toggle = document.createElement('button');
-  toggle.className = 'sp-btn' + (showRouteEmoji ? ' active' : '');
-  toggle.textContent = showRouteEmoji ? 'On' : 'Off';
-  toggle.title = 'Show the transport emoji at the middle of every route';
-  toggle.addEventListener('click', async () => {
-    showRouteEmoji = !showRouteEmoji;
-    localStorage.setItem('trip-mapper-route-emoji', showRouteEmoji ? '1' : '0');
-    await rebuildAllRoutes(); renderLocList(); save();
-  });
+  toggle.className = 'sp-btn' + (on ? ' active' : '');
+  toggle.textContent = on ? 'On' : 'Off';
+  toggle.title = 'Show the transport emoji at the middle of this segment';
+  toggle.addEventListener('click', () => apply(r => { r.emoji = !on; }));
   row.appendChild(toggle);
+
+  const bgToggle = document.createElement('button');
+  bgToggle.className = 'sp-btn' + (bg ? ' active' : '');
+  bgToggle.textContent = bg ? 'Bg on' : 'Bg off';
+  bgToggle.title = 'Draw a circular background behind the emoji';
+  bgToggle.addEventListener('click', () => apply(r => { r.emojiBg = !bg; }));
+  row.appendChild(bgToggle);
 
   const slider = document.createElement('input');
   slider.type = 'range'; slider.min = 8; slider.max = 80; slider.step = 1;
-  slider.value = routeEmojiSize; slider.className = 'sp-slider';
+  slider.value = sz; slider.className = 'sp-slider';
   const val = document.createElement('span');
-  val.className = 'sp-slider-val'; val.textContent = `${routeEmojiSize}px`;
+  val.className = 'sp-slider-val'; val.textContent = `${sz}px`;
   slider.addEventListener('input', () => { val.textContent = `${slider.value}px`; });
-  slider.addEventListener('change', async () => {
-    routeEmojiSize = parseInt(slider.value, 10);
-    localStorage.setItem('trip-mapper-route-emoji-size', String(routeEmojiSize));
-    if (showRouteEmoji) await rebuildAllRoutes();
+  slider.addEventListener('change', () => {
+    const v = parseInt(slider.value, 10);
+    ids.forEach(i => { if (routes[i]) routes[i].emojiSize = v; });
+    ids.forEach(i => redrawRouteEmojiOnly(i));
     save();
   });
   row.appendChild(slider); row.appendChild(val);
@@ -241,6 +257,7 @@ let routeHitLayers = [];                            // invisible wide lines for 
 let routeEmojiMarkers = [];                        // midpoint transport-emoji markers (optional)
 let showRouteEmoji = false;                        // show mode-of-transport emoji at route midpoints
 let routeEmojiSize = 16;                            // px size of the midpoint transport emoji
+let routeEmojiBg   = false;                         // draw a circular background behind the emoji (off = transparent)
 let nextRouteType    = 'car';
 let expandedPalette  = null;  // which palette accordion is open in style panel
 // Unified selection: one kind at a time ('loc' | 'route'), one or many indices.
@@ -249,6 +266,9 @@ let sel = { kind: null, idxs: [] };
 let selAnchor = null;                             // pivot for shift/range selection
 let showPalettes = false;                         // palette section collapsed by default
 let showAdvancedLabel = false;                    // advanced label/typography options collapsed
+let activeTab = 'pins';                           // left panel tab: 'pins' | 'routes'
+let multiSelect = false;                          // plain clicks add/remove from selection (no Ctrl needed)
+let onlyPins = false;                             // global: suppress every route, show pins only
 function clearSelection() { sel = { kind: null, idxs: [] }; selAnchor = null; expandedPalette = null; }
 // mods: { range } shift = contiguous range from anchor; { toggle } ctrl/cmd = add/remove one.
 function selectItem(kind, i, mods = {}) {
@@ -267,11 +287,16 @@ function selectItem(kind, i, mods = {}) {
   } else {
     sel.idxs = [i]; selAnchor = i; expandedPalette = null;   // plain click: select just this
   }
+  // Keep the visible tab in step with what's being edited (e.g. clicking a route
+  // line on the map surfaces it in the Routes tab).
+  if (sel.kind) activeTab = sel.kind === 'route' ? 'routes' : 'pins';
 }
 // Translate a mouse event's modifier keys into a selection intent.
 function clickMods(e) {
   if (e && e.shiftKey) return { range: true };
   if (e && (e.ctrlKey || e.metaKey)) return { toggle: true };
+  // Multi-select mode: a plain click behaves like Ctrl+click, so items accumulate.
+  if (multiSelect) return { toggle: true };
   return {};
 }
 let paletteApplyMode = 'same'; // 'same' | 'sequential' | 'bytype'
@@ -438,6 +463,10 @@ async function drawRoute(idx) {
   const route = routes[idx]; if (!route) return;
   const from = locations[route.fromIdx], to = locations[route.toIdx];
   if (!from || !to) return;
+  // "Only pins" (global) or a per-segment hide draws nothing — the stops stay, the
+  // line and its midpoint emoji are removed. The segment lives on in the Routes tab,
+  // so it can always be brought back from there.
+  if (onlyPins || route.hidden) { clearRouteLayer(idx); return; }
   const points = await resolvePoints(route);
   if (!points.length) return;
   while (routeHitLayers.length <= idx) routeHitLayers.push(null);
@@ -494,15 +523,26 @@ function drawRouteEmoji(idx, points) {
   while (routeEmojiMarkers.length <= idx) routeEmojiMarkers.push(null);
   if (routeEmojiMarkers[idx]) { map.removeLayer(routeEmojiMarkers[idx]); routeEmojiMarkers[idx] = null; }
   const route = routes[idx];
-  if (!showRouteEmoji || !route || !points || !points.length) return;
+  if (!route || !route.emoji || !points || !points.length) return;
   const emoji = TYPE_EMOJI[route.type] || '';
-  const size = routeEmojiSize || 16;
+  const size = route.emojiSize || 16;
   const box = size + 8;
   const m = L.marker(routeMidpoint(points), {
-    icon: L.divIcon({ className: 'route-emoji', html: `<span style="font-size:${size}px">${emoji}</span>`, iconSize: [box, box], iconAnchor: [box / 2, box / 2] }),
+    icon: L.divIcon({ className: 'route-emoji' + (route.emojiBg ? ' has-bg' : ''), html: `<span style="font-size:${size}px">${emoji}</span>`, iconSize: [box, box], iconAnchor: [box / 2, box / 2] }),
     interactive: false, keyboard: false,
   }).addTo(map);
   routeEmojiMarkers[idx] = m;
+}
+// Redraw only a segment's midpoint emoji, reusing the existing line's geometry so we
+// don't refetch the route just to toggle/resize the emoji.
+function redrawRouteEmojiOnly(idx) {
+  const layer = routeLayers[idx];
+  if (!layer) {
+    if (routeEmojiMarkers[idx]) { map.removeLayer(routeEmojiMarkers[idx]); routeEmojiMarkers[idx] = null; }
+    return;
+  }
+  const points = layer.getLatLngs().map(ll => [ll.lat, ll.lng]);
+  drawRouteEmoji(idx, points);
 }
 function clearRouteLayer(idx) {
   if (routeLayers[idx]) { map.removeLayer(routeLayers[idx]); routeLayers[idx] = null; }
@@ -672,7 +712,9 @@ function markerIconHtml(loc, { hidden = false } = {}) {
   // The "# size" control (labelNumberSize, default 85) also scales the pin digit;
   // 85 keeps the original size, higher/lower grows or shrinks it.
   const numScale = (loc.labelNumberSize ?? 85) / 85;
-  const fontSize = Math.max(7, Math.round(size * 0.5 * numScale));
+  // Keep a tiny floor (not 7px) so the digit keeps shrinking with small pins / low
+  // "# size" instead of plateauing.
+  const fontSize = Math.max(1, +(size * 0.5 * numScale).toFixed(1));
   const hiddenStyle = hidden ? 'opacity:0;pointer-events:none;' : '';
   const numberStyle = shapeKey === 'diamond' ? ' style="transform:rotate(-45deg);"' : '';
   let shapeStyle;
@@ -802,12 +844,14 @@ function addLocMarker(loc, locIdx) {
   const duplicateLoc = locations.findIndex(l => locKey(l) === locKey(loc)) !== locIdx;
   loc = { ...loc, visitNumber: locIdx + 1 };
   const icon = L.divIcon({
-    className: `loc-mk-${locIdx}`,
+    // Hidden revisit markers stack exactly on the original; mark them so the whole
+    // marker is click/hover-transparent (below), letting events reach the visible pin.
+    className: `loc-mk-${locIdx}` + (duplicateLoc ? ' loc-mk-dup' : ''),
     html: markerIconHtml(loc, { hidden: duplicateLoc }),
     iconAnchor: [(loc.markerSize ?? 18) / 2, (loc.markerSize ?? 18) / 2],
     iconSize: [loc.markerSize ?? 18, loc.markerSize ?? 18],
   });
-  const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(map);
+  const marker = L.marker([loc.lat, loc.lng], { icon, interactive: !duplicateLoc }).addTo(map);
   const mode = loc.labelMode || 'always';
   if (mode !== 'hidden') {
     marker.bindTooltip(labelTooltipHtml(loc), {
@@ -842,6 +886,14 @@ function addLocMarker(loc, locIdx) {
     }
   }
   marker.on('click', e => {
+    // While placing a new stop ("Pick on map"), clicking an existing pin revisits
+    // that place instead of selecting it — adding a fresh stop at the same spot.
+    if (pickMode && pickEditIdx == null) {
+      L.DomEvent.stop(e);
+      exitPickMode();
+      revisitLocation(locIdx);
+      return;
+    }
     selectItem('loc', locIdx, clickMods(e.originalEvent));
     renderLocList();
     setTimeout(() => {
@@ -1278,8 +1330,26 @@ function makeStylePanel(routeIdx, route) {
   widthRow.appendChild(slider); widthRow.appendChild(valLabel);
   panel.appendChild(widthRow);
 
-  // — Mode-of-transport emoji at route midpoints (global) —
-  panel.appendChild(makeRouteEmojiRow());
+  // — Visibility: hide this segment's line on the map while keeping the stops —
+  const visRow = document.createElement('div');
+  visRow.className = 'sp-row';
+  visRow.innerHTML = '<span class="sp-label">Show</span>';
+  const visBtn = document.createElement('button');
+  visBtn.className = 'sp-btn' + (route.hidden ? '' : ' active');
+  visBtn.textContent = route.hidden ? 'Hidden' : 'Shown';
+  visBtn.title = 'Toggle whether this route is drawn on the map';
+  visBtn.addEventListener('click', async () => { routes[routeIdx].hidden = !routes[routeIdx].hidden; await redrawRoute(routeIdx); });
+  visRow.appendChild(visBtn);
+  if (onlyPins) {
+    const note = document.createElement('span');
+    note.className = 'sp-hint';
+    note.textContent = '“Only pins” is on — all routes are hidden.';
+    visRow.appendChild(note);
+  }
+  panel.appendChild(visRow);
+
+  // — Mode-of-transport emoji at this segment's midpoint —
+  panel.appendChild(makeRouteEmojiRow([routeIdx]));
 
   // — Apply line style (dash/density/line/width) to every segment, leaving each
   //   segment's colour untouched so sequential/by-type palettes survive —
@@ -1322,6 +1392,22 @@ function applyMarkerNumberStyleToAll(sourceLoc) {
 
 function applyMarkerSizeToAll(size) {
   locations.forEach(l => { l.markerSize = size; });
+  rebuildMarkers(); renderLocList(); save();
+}
+
+// Copy one pin's full visual style (color, shape, size, border, number style, ring
+// gap) to every stop — the pin equivalent of "apply line style to all segments".
+function applyMarkerStyleToAll(src) {
+  if (!src) return;
+  locations.forEach(l => {
+    l.markerColor = src.markerColor;
+    l.shape = src.shape || 'circle';
+    l.markerSize = src.markerSize ?? 18;
+    l.markerBorderColor = src.markerBorderColor ?? null;
+    l.markerShowNumber = src.markerShowNumber ?? true;
+    l.markerNumberColor = src.markerNumberColor || '#18181b';
+    l.ringGap = src.ringGap ?? 6;
+  });
   rebuildMarkers(); renderLocList(); save();
 }
 
@@ -1447,6 +1533,103 @@ function makeMarkerPaletteControls(locIdx, loc) {
   });
 
   return section;
+}
+
+// Palette accordion for a multi-selection of pins. Mirrors the single-pin controls
+// but recolors only the pins in `targetIdxs`; "Sequential" distributes palette colors
+// across the selected pins in their order (not all stops).
+function appendMarkerPalettes(panel, targetIdxs) {
+  const first = locations[targetIdxs[0]] || {};
+  const recolor = (fn) => { targetIdxs.forEach((i, k) => { if (locations[i]) fn(locations[i], k); }); };
+  const refresh = () => { rebuildMarkers(); renderLocList(); save(); };
+
+  const palToggle = document.createElement('button');
+  palToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
+  palToggle.textContent = `${showPalettes ? '▾' : '▸'} Palettes`;
+  palToggle.addEventListener('click', () => { showPalettes = !showPalettes; renderLocList(); });
+  panel.appendChild(palToggle);
+  if (!showPalettes) return;
+
+  const section = document.createElement('div');
+  section.className = 'palette-section';
+  section.dataset.scrollKey = 'marker-bulk';
+
+  const modeRow = document.createElement('div'); modeRow.className = 'pal-mode-row';
+  const label = document.createElement('span'); label.className = 'sp-label'; label.textContent = 'Palette';
+  modeRow.appendChild(label);
+  [
+    ['all', 'Same', 'Apply one palette color to every selected pin'],
+    ['sequential', 'Sequential', 'Assign palette colors across the selected pins, in order'],
+  ].forEach(([mode, txt, title]) => {
+    const b = document.createElement('button');
+    b.className = 'sp-btn' + (markerPaletteApplyMode === mode ? ' active' : '');
+    b.textContent = txt; b.title = title;
+    b.addEventListener('click', () => { markerPaletteApplyMode = mode; renderLocList(); });
+    modeRow.appendChild(b);
+  });
+  section.appendChild(modeRow);
+  section.appendChild(makeManagePalettesBtn());
+
+  Object.entries(allPalettes()).forEach(([name, colors]) => {
+    if (!colors) return;
+    const orderedColors = orderedPaletteColors('marker', name, colors);
+    const key = `marker:${name}`;
+
+    const entry = document.createElement('div'); entry.className = 'palette-entry';
+    const header = document.createElement('div');
+    header.className = 'palette-header' + (expandedPalette === key ? ' open' : '');
+    const strip = document.createElement('div'); strip.className = 'palette-strip';
+    orderedColors.forEach(c => { const s = document.createElement('span'); s.style.background = c; strip.appendChild(s); });
+    header.appendChild(strip);
+    const nameLbl = document.createElement('span'); nameLbl.className = 'palette-name'; nameLbl.textContent = name;
+    const arrow = document.createElement('span'); arrow.className = 'palette-arrow';
+    arrow.textContent = expandedPalette === key ? '▲' : '▼';
+    header.appendChild(nameLbl); header.appendChild(arrow);
+    header.addEventListener('click', () => { expandedPalette = expandedPalette === key ? null : key; renderLocList(); });
+    entry.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'palette-body' + (expandedPalette === key ? ' open' : '');
+    const swatchRow = document.createElement('div'); swatchRow.className = 'palette-swatches';
+    orderedColors.forEach(hex => {
+      const sw = document.createElement('div');
+      sw.className = 'swatch' + (first.markerColor === hex ? ' active' : '');
+      sw.style.cssText = `background:${hex};width:20px;height:20px;`;
+      sw.title = hex;
+      sw.addEventListener('click', () => { recolor(l => { l.markerColor = hex; }); refresh(); });
+      swatchRow.appendChild(sw);
+    });
+    body.appendChild(swatchRow);
+
+    const orderRow = document.createElement('div'); orderRow.className = 'palette-order-row';
+    [['left', '↶ Rotate'], ['right', 'Rotate ↷'], ['reverse', 'Reverse']].forEach(([action, lbl]) => {
+      const btn = document.createElement('button'); btn.className = 'sp-btn'; btn.textContent = lbl;
+      btn.addEventListener('click', () => { adjustPaletteOrder('marker', name, action); renderLocList(); });
+      orderRow.appendChild(btn);
+    });
+    body.appendChild(orderRow);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'palette-apply';
+    applyBtn.textContent = markerPaletteApplyMode === 'sequential'
+      ? 'Apply sequentially across selected'
+      : 'Apply selected color to selected pins';
+    applyBtn.addEventListener('click', () => {
+      if (markerPaletteApplyMode === 'sequential') {
+        recolor((l, k) => { l.markerColor = orderedColors[k % orderedColors.length]; });
+      } else {
+        const c = orderedColors.includes(first.markerColor) ? first.markerColor : orderedColors[0];
+        recolor(l => { l.markerColor = c; });
+      }
+      refresh();
+    });
+    body.appendChild(applyBtn);
+
+    entry.appendChild(body);
+    section.appendChild(entry);
+  });
+
+  panel.appendChild(section);
 }
 
 // ── Location edit panel ───────────────────────────────────────────────────────
@@ -1677,6 +1860,17 @@ function makeLocEditPanel(locIdx) {
     gapRow.appendChild(gapSlider); gapRow.appendChild(gapVal);
     panel.appendChild(gapRow);
   }
+
+  // Apply this pin's whole style to every stop.
+  const styleAllRow = document.createElement('div'); styleAllRow.className = 'lep-row';
+  styleAllRow.innerHTML = '<span class="lep-label"></span>';
+  const styleAllBtn = document.createElement('button');
+  styleAllBtn.className = 'palette-apply';
+  styleAllBtn.textContent = '↓ Apply pin style to all stops';
+  styleAllBtn.title = "Copy this pin's color, shape, size, border and number style to every stop";
+  styleAllBtn.addEventListener('click', () => applyMarkerStyleToAll(locations[locIdx]));
+  styleAllRow.appendChild(styleAllBtn);
+  panel.appendChild(styleAllRow);
 
   const markerPalToggle = document.createElement('button');
   markerPalToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
@@ -1918,7 +2112,17 @@ function makeLocEditPanel(locIdx) {
       'labelMode','labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
       'labelPos','labelRound','labelSize','labelNumberSize','labelTextAlign','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
     ];
-    locations.forEach((l, j) => { if (j !== locIdx) keys.forEach(k => { l[k] = src[k]; }); });
+    locations.forEach((l, j) => {
+      if (j === locIdx) return;
+      // A recurring stop (same place as an earlier stop) keeps its own label
+      // visibility — applying a style shouldn't re-reveal labels you've hidden to
+      // avoid overlap. Its other label styling is still synced.
+      const isRecurring = locations.findIndex(o => locKey(o) === locKey(l)) !== j;
+      keys.forEach(k => {
+        if (k === 'labelMode' && isRecurring) return;
+        l[k] = src[k];
+      });
+    });
     rebuildMarkers(); renderLocList(); save();
   });
   lblAllRow.appendChild(lblAllBtn);
@@ -1932,6 +2136,111 @@ function makeLocEditPanel(locIdx) {
 // ── Bulk edit panels (multi-selection) ────────────────────────────────────────
 // Compact panels shown when several routes/stops are selected; each control writes
 // to every selected item at once. Intentionally a small, common subset of options.
+// Palette accordion for a set of route segments. Unlike the single-segment panel
+// (whose "apply" hits every route), this only recolors the segments in `targetIdxs`,
+// so it works for a multi-selection. Same / Sequential / By type share the global mode.
+function appendRoutePalettes(panel, targetIdxs) {
+  const first = routes[targetIdxs[0]] || {};
+  const typeKeys = Object.keys(TYPE_EMOJI);
+  const recolor = (fn) => { targetIdxs.forEach((i, k) => { if (routes[i]) fn(routes[i], k); }); };
+  const refresh = async () => { await rebuildAllRoutes(); renderLocList(); save(); };
+
+  const palToggle = document.createElement('button');
+  palToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
+  palToggle.textContent = `${showPalettes ? '▾' : '▸'} Palettes`;
+  palToggle.addEventListener('click', () => { showPalettes = !showPalettes; renderLocList(); });
+  panel.appendChild(palToggle);
+  if (!showPalettes) return;
+
+  const section = document.createElement('div');
+  section.className = 'palette-section';
+  section.dataset.scrollKey = 'route-bulk';
+
+  const palModeRow = document.createElement('div'); palModeRow.className = 'pal-mode-row';
+  const palLbl = document.createElement('span'); palLbl.className = 'sp-label'; palLbl.textContent = 'Palette';
+  palModeRow.appendChild(palLbl);
+  [
+    ['same', 'Same', 'Apply one color to every selected segment'],
+    ['sequential', 'Sequential', 'Assign palette colors across the selected segments'],
+    ['bytype', 'By type', 'One palette color per transport mode'],
+  ].forEach(([mode, txt, title]) => {
+    const b = document.createElement('button');
+    b.className = 'sp-btn' + (paletteApplyMode === mode ? ' active' : '');
+    b.textContent = txt; b.title = title;
+    b.addEventListener('click', () => { paletteApplyMode = mode; renderLocList(); });
+    palModeRow.appendChild(b);
+  });
+  section.appendChild(palModeRow);
+  section.appendChild(makeManagePalettesBtn());
+
+  Object.entries(allPalettes()).forEach(([name, colors]) => {
+    const entry = document.createElement('div'); entry.className = 'palette-entry';
+    const orderedColors = colors ? orderedPaletteColors('route', name, colors) : null;
+
+    const header = document.createElement('div');
+    header.className = 'palette-header' + (expandedPalette === name ? ' open' : '');
+    if (orderedColors) {
+      const strip = document.createElement('div'); strip.className = 'palette-strip';
+      orderedColors.forEach(c => { const s = document.createElement('span'); s.style.background = c; strip.appendChild(s); });
+      header.appendChild(strip);
+    }
+    const nameLbl = document.createElement('span'); nameLbl.className = 'palette-name'; nameLbl.textContent = name;
+    const arrow = document.createElement('span');
+    arrow.style.cssText = 'font-size:10px;color:var(--fg2);flex-shrink:0;';
+    arrow.textContent = expandedPalette === name ? '▲' : '▼';
+    header.appendChild(nameLbl); header.appendChild(arrow);
+    header.addEventListener('click', () => { expandedPalette = expandedPalette === name ? null : name; renderLocList(); });
+    entry.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'palette-body' + (expandedPalette === name ? ' open' : '');
+    if (orderedColors) {
+      const swatchRow = document.createElement('div'); swatchRow.className = 'palette-swatches';
+      orderedColors.forEach(hex => {
+        const sw = document.createElement('div');
+        sw.className = 'swatch' + (first.color === hex ? ' active' : '');
+        sw.style.cssText = `background:${hex};width:20px;height:20px;`;
+        sw.title = hex;
+        sw.addEventListener('click', async () => { recolor(r => { r.color = hex; }); await refresh(); });
+        swatchRow.appendChild(sw);
+      });
+      body.appendChild(swatchRow);
+
+      const orderRow = document.createElement('div'); orderRow.className = 'palette-order-row';
+      [['left', '↶ Rotate'], ['right', 'Rotate ↷'], ['reverse', 'Reverse']].forEach(([action, label]) => {
+        const btn = document.createElement('button'); btn.className = 'sp-btn'; btn.textContent = label;
+        btn.addEventListener('click', () => { adjustPaletteOrder('route', name, action); renderLocList(); });
+        orderRow.appendChild(btn);
+      });
+      body.appendChild(orderRow);
+    }
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'palette-apply';
+    applyBtn.textContent = !orderedColors ? 'Reset selected to type default' :
+      paletteApplyMode === 'same' ? 'Apply selected color to selected segments' : 'Apply to selected segments';
+    applyBtn.addEventListener('click', async () => {
+      if (!orderedColors) {
+        recolor(r => { r.color = null; });
+      } else if (paletteApplyMode === 'same') {
+        const c = first.color ?? orderedColors[0];
+        recolor(r => { r.color = c; });
+      } else if (paletteApplyMode === 'bytype') {
+        recolor(r => { const ti = typeKeys.indexOf(r.type); r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length]; });
+      } else {
+        recolor((r, k) => { r.color = orderedColors[k % orderedColors.length]; });
+      }
+      await refresh();
+    });
+    body.appendChild(applyBtn);
+
+    entry.appendChild(body);
+    section.appendChild(entry);
+  });
+
+  panel.appendChild(section);
+}
+
 function makeBulkRoutePanel(idxs) {
   const panel = document.createElement('div');
   panel.className = 'style-panel';
@@ -1962,6 +2271,8 @@ function makeBulkRoutePanel(idxs) {
   ci.addEventListener('input', async () => { apply(r => { r.color = ci.value; }); await refresh(); });
   cw.appendChild(fill); cw.appendChild(ci); colorRow.appendChild(cw);
   panel.appendChild(colorRow);
+
+  appendRoutePalettes(panel, idxs);
 
   const mkBtnRow = (label, pairs, fn) => {
     const row = document.createElement('div'); row.className = 'sp-row';
@@ -1999,7 +2310,7 @@ function makeBulkRoutePanel(idxs) {
     densRow.appendChild(dens); densRow.appendChild(densVal); panel.appendChild(densRow);
   }
 
-  panel.appendChild(makeRouteEmojiRow());
+  panel.appendChild(makeRouteEmojiRow(idxs));
 
   return panel;
 }
@@ -2029,6 +2340,8 @@ function makeBulkLocPanel(idxs) {
   ci.addEventListener('input', () => { apply(l => { l.markerColor = ci.value; }); refresh(); });
   cw.appendChild(fill); cw.appendChild(ci); colorRow.appendChild(cw);
   panel.appendChild(colorRow);
+
+  appendMarkerPalettes(panel, idxs);
 
   // Border color
   const borderRow = document.createElement('div'); borderRow.className = 'sp-row';
@@ -2163,8 +2476,22 @@ function restorePanelScrollPositions(root) {
   });
 }
 
+// Reflect the active tab and the multi-select toggle in the tab bar chrome.
+function updateTabBar() {
+  document.getElementById('tab-pins')?.classList.toggle('active', activeTab === 'pins');
+  document.getElementById('tab-routes')?.classList.toggle('active', activeTab === 'routes');
+  const ms = document.getElementById('btn-multiselect');
+  if (ms) {
+    ms.classList.toggle('active', multiSelect);
+    ms.title = multiSelect
+      ? 'Multi-select on: click items to add/remove without Ctrl'
+      : 'Multi-select off: click selects one (Ctrl/Shift for many)';
+  }
+}
+
 function renderLocList() {
   renderNextModeBtns();
+  updateTabBar();
   const el = document.getElementById('loc-list');
   const listScrollTop = el.scrollTop;
   rememberPanelScrollPositions(el);
@@ -2178,42 +2505,31 @@ function renderLocList() {
     return;
   }
 
+  if (activeTab === 'routes') renderRoutesList(el);
+  else renderPinsList(el);
+
+  renderDetailPanel();
+
+  const restoreScroll = () => {
+    el.scrollTop = listScrollTop;
+    restorePanelScrollPositions(el);
+  };
+  restoreScroll();
+  requestAnimationFrame(restoreScroll);
+}
+
+// ── Pins tab ──────────────────────────────────────────────────────────────────
+function renderPinsList(el) {
   locations.forEach((loc, i) => {
-    if (i > 0) {
-      const r    = routes.find(r => r.fromIdx === i-1 && r.toIdx === i);
-      const rIdx = routes.indexOf(r);
-      const conn = document.createElement('div');
-      conn.className = 'connector';
-
-      // Top row: bar + mode buttons + style toggle
-      const row = document.createElement('div');
-      row.className = 'connector-row';
-      const bar = document.createElement('div');
-      bar.className = 'connector-bar';
-      row.appendChild(bar);
-      if (r) {
-        row.appendChild(makeSegmentModeBtns(rIdx, r.type));
-        const swatch = document.createElement('div');
-        swatch.style.cssText = `width:8px;height:8px;border-radius:50%;background:${r.color ?? ROUTE_META[r.type].color};flex-shrink:0;`;
-        row.appendChild(swatch);
-        const toggle = document.createElement('button');
-        toggle.className = 'style-toggle' + (sel.kind === 'route' && sel.idxs.includes(rIdx) ? ' open' : '');
-        toggle.textContent = '✦'; toggle.title = 'Style segment (Shift+click to select multiple)';
-        toggle.addEventListener('click', e => {
-          selectItem('route', rIdx, clickMods(e));
-          renderLocList();
-        });
-        row.appendChild(toggle);
-      }
-      conn.appendChild(row);
-
-      el.appendChild(conn);
-    }
-
     const item = document.createElement('div');
     item.className = 'list-item'; item.id = `loc-item-${i}`;
     item.draggable = true;
-    const sub = [loc.date, `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`].filter(Boolean).join(' · ');
+    // If the same place appears more than once, tag the stop with its visit ordinal.
+    const key = locKey(loc);
+    const visitTotal = locations.reduce((n, l) => n + (locKey(l) === key ? 1 : 0), 0);
+    const visitOrd = locations.slice(0, i + 1).reduce((n, l) => n + (locKey(l) === key ? 1 : 0), 0);
+    const visitTag = visitTotal > 1 ? `Visit ${visitOrd}/${visitTotal}` : '';
+    const sub = [loc.date, visitTag, `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`].filter(Boolean).join(' · ');
     item.innerHTML =
       `<span class="drag-handle" title="Drag to reorder">⠿</span>
        <div class="loc-num" style="background:${loc.markerColor||'var(--accent)'};">${i+1}</div>
@@ -2225,7 +2541,7 @@ function renderLocList() {
        <button class="btn-sm fly"  title="Fly to">${ICONS.flyTo}</button>
        <button class="btn-sm del"  title="Remove">${ICONS.del}</button>`;
     // Click anywhere on the row (except the action buttons) to select it; Shift =
-    // range, Ctrl/Cmd = toggle. The Edit button does the same (single by default).
+    // range, Ctrl/Cmd (or multi-select mode) = toggle. Edit does the same.
     item.addEventListener('click', e => {
       if (e.target.closest('.btn-sm')) return;
       selectItem('loc', i, clickMods(e));
@@ -2245,15 +2561,93 @@ function renderLocList() {
   if (sel.kind === 'loc') {
     sel.idxs.forEach(i => el.querySelector(`#loc-item-${i}`)?.classList.add('selected'));
   }
+}
 
-  renderDetailPanel();
+// ── Routes tab ──────────────────────────────────────────────────────────────────
+// Each segment gets its own row: travel-mode buttons (which also un-hide), a colour
+// dot, a Show/Hide toggle and the ✦ style toggle. A global "Only pins" switch up top
+// hides every route at once. Because this list exists independently of the map lines,
+// a hidden route can always be brought back from here.
+function renderRoutesList(el) {
+  const head = document.createElement('div');
+  head.className = 'routes-head';
+  const onlyBtn = document.createElement('button');
+  onlyBtn.className = 'routes-onlypins' + (onlyPins ? ' active' : '');
+  onlyBtn.textContent = onlyPins ? 'Only pins: ON' : 'Only pins: OFF';
+  onlyBtn.title = 'Hide every route on the map, keeping only the pins';
+  onlyBtn.addEventListener('click', () => setOnlyPins(!onlyPins));
+  head.appendChild(onlyBtn);
+  el.appendChild(head);
 
-  const restoreScroll = () => {
-    el.scrollTop = listScrollTop;
-    restorePanelScrollPositions(el);
-  };
-  restoreScroll();
-  requestAnimationFrame(restoreScroll);
+  if (locations.length < 2) {
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = 'Add at least two stops to connect them with routes.';
+    el.appendChild(hint);
+    return;
+  }
+
+  for (let i = 1; i < locations.length; i++) {
+    const r = routes.find(r => r.fromIdx === i - 1 && r.toIdx === i);
+    if (!r) continue;
+    const rIdx = routes.indexOf(r);
+    const selected = sel.kind === 'route' && sel.idxs.includes(rIdx);
+    const hidden = onlyPins || r.hidden;
+
+    const item = document.createElement('div');
+    item.className = 'route-item' + (selected ? ' selected' : '') + (hidden ? ' is-hidden' : '');
+    item.id = `route-item-${rIdx}`;
+
+    const rowHead = document.createElement('div');
+    rowHead.className = 'route-head';
+    rowHead.innerHTML =
+      `<div class="route-num">${i}<span class="route-arrow">→</span>${i + 1}</div>
+       <div class="route-name">${locations[i - 1].name} → ${locations[i].name}</div>`;
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'route-hide' + (r.hidden ? ' off' : '');
+    hideBtn.textContent = r.hidden ? 'Show' : 'Hide';
+    hideBtn.title = r.hidden ? 'Show this route on the map' : 'Hide this route, keep the stops';
+    hideBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      routes[rIdx].hidden = !routes[rIdx].hidden;
+      await redrawRoute(rIdx);
+    });
+    rowHead.appendChild(hideBtn);
+    const styleBtn = document.createElement('button');
+    styleBtn.className = 'style-toggle' + (selected ? ' open' : '');
+    styleBtn.textContent = '✦'; styleBtn.title = 'Style segment (Shift+click to select multiple)';
+    styleBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      selectItem('route', rIdx, clickMods(e));
+      renderLocList();
+    });
+    rowHead.appendChild(styleBtn);
+    item.appendChild(rowHead);
+
+    const modes = document.createElement('div');
+    modes.className = 'route-modes';
+    modes.appendChild(makeSegmentModeBtns(rIdx, r.type));
+    const swatch = document.createElement('div');
+    swatch.className = 'route-swatch';
+    swatch.style.background = r.color ?? ROUTE_META[r.type].color;
+    modes.appendChild(swatch);
+    item.appendChild(modes);
+
+    // Clicking the row body (not a button) selects the segment too.
+    item.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      selectItem('route', rIdx, clickMods(e));
+      renderLocList();
+    });
+
+    el.appendChild(item);
+  }
+}
+
+function setOnlyPins(v) {
+  onlyPins = !!v;
+  localStorage.setItem('trip-mapper-only-pins', onlyPins ? '1' : '0');
+  rebuildAllRoutes(); renderLocList(); save();
 }
 
 // ── Detail panel (right side) ───────────────────────────────────────────────────
@@ -2318,6 +2712,9 @@ function renderDetailPanel() {
 // ── Change route type ─────────────────────────────────────────────────────────
 async function changeRouteType(idx, newType) {
   routes[idx].type = newType;
+  // Picking a transport mode is an intent to show the route, so un-hide it. (The
+  // global "only pins" switch still wins until it's turned off.)
+  routes[idx].hidden = false;
   clearRouteLayer(idx);
   await drawRoute(idx);
   renderLocList();
@@ -2351,6 +2748,10 @@ function normalizeRoute(r) {
     shape,
     weight: r.weight ?? null,
     curveCtrl: cc && Number.isFinite(cc.lat) && Number.isFinite(cc.lng) ? { lat: cc.lat, lng: cc.lng } : null,
+    hidden: !!r.hidden,
+    emoji: !!r.emoji,
+    emojiSize: Number.isFinite(r.emojiSize) ? r.emojiSize : 16,
+    emojiBg: !!r.emojiBg,
   };
 }
 
@@ -2377,6 +2778,8 @@ function currentSettings() {
     numberFont: document.getElementById('number-font-select').value || 'Noto Sans KR',
     showRouteEmoji,
     routeEmojiSize,
+    routeEmojiBg,
+    onlyPins,
     customPalettes: customPalettes.map(p => ({ name: p.name, colors: [...p.colors] })),
     customCss: localStorage.getItem('trip-mapper-custom-css') || '',
     paletteOrder: paletteOrderSettings(),
@@ -2400,6 +2803,9 @@ function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   const numberFont = settings.numberFont || localStorage.getItem('trip-mapper-number-font') || labelFont;
   showRouteEmoji = settings.showRouteEmoji ?? (localStorage.getItem('trip-mapper-route-emoji') === '1');
   routeEmojiSize = settings.routeEmojiSize ?? (parseInt(localStorage.getItem('trip-mapper-route-emoji-size'), 10) || 16);
+  routeEmojiBg = settings.routeEmojiBg ?? (localStorage.getItem('trip-mapper-route-emoji-bg') === '1');
+  onlyPins = settings.onlyPins ?? (localStorage.getItem('trip-mapper-only-pins') === '1');
+  if (persist) localStorage.setItem('trip-mapper-only-pins', onlyPins ? '1' : '0');
   if (Array.isArray(settings.customPalettes)) {
     customPalettes = settings.customPalettes.filter(p => p && p.name && Array.isArray(p.colors));
     saveCustomPalettes();
@@ -2418,10 +2824,24 @@ function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   if (settings.customCss != null) applyCustomCss(settings.customCss, { persist });
 }
 
+// Legacy trips stored emoji visibility globally (settings.showRouteEmoji). If a trip
+// predates per-segment emoji (no route carries an `emoji` field), carry the old global
+// settings onto every segment so its look is preserved.
+function migrateLegacyRouteEmoji(rawRoutes, settings) {
+  if (!settings || !settings.showRouteEmoji) return;
+  if ((rawRoutes || []).some(r => r && 'emoji' in r)) return;
+  routes.forEach(r => {
+    r.emoji = true;
+    r.emojiSize = Number.isFinite(settings.routeEmojiSize) ? settings.routeEmojiSize : 16;
+    r.emojiBg = !!settings.routeEmojiBg;
+  });
+}
+
 async function applyTripData(data, { persist = true } = {}) {
   const d = Array.isArray(data) ? { locations: data, routes: [], settings: {} } : (data || {});
   locations = (d.locations || []).map(normalizeLoc);
   routes = (d.routes || []).map(normalizeRoute);
+  migrateLegacyRouteEmoji(d.routes, d.settings || {});
   applyTripSettings(d.settings || {}, { persist });
   clearSelection();
   await rebuildAll();
@@ -2436,6 +2856,7 @@ function load() {
     const d = JSON.parse(raw);
     locations = (d.locations || []).map(normalizeLoc);
     routes = (d.routes || []).map(normalizeRoute);
+    migrateLegacyRouteEmoji(d.routes, d.settings || {});
     applyTripSettings(d.settings || {}, { persist: false });
   } catch {}
 }
@@ -2465,7 +2886,7 @@ async function rebuildAll() {
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
-  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null };
+  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
 }
 
 async function addLocationAuto(name, lat, lng) {
@@ -2482,6 +2903,37 @@ async function addLocationAuto(name, lat, lng) {
 
   fitAll(); renderLocList(); save();
   toast(`Added "${name}"`);
+}
+
+// Add another stop at an existing pin's place — a revisit. The new stop reuses the
+// source's location and visual style (so it looks identical) but starts with its own
+// blank date/notes and a fresh default label position. Multiple stops sharing the same
+// coordinates are how a repeated visit is stored; the list shows "Visit k/N".
+async function revisitLocation(srcIdx) {
+  const src = locations[srcIdx];
+  if (!src) return;
+  const prevIdx = locations.length - 1;
+  const locIdx  = locations.length;
+  const clone = JSON.parse(JSON.stringify(src));
+  clone.date = '';
+  clone.description = '';
+  // A revisit sits on top of the original pin, so start with its label hidden to
+  // avoid stacking two labels in the same spot — turn it on per-stop if wanted.
+  clone.labelMode = 'hidden';
+  // Drop the source's per-instance label nudge so the revisit gets a clean default.
+  delete clone.labelOffsetX; delete clone.labelOffsetY; delete clone.labelWidth;
+  locations.push(clone);
+  addLocMarker(clone, locIdx);
+
+  if (prevIdx >= 0) {
+    const rIdx = routes.length;
+    routes.push(makeRoute(prevIdx, locIdx));
+    await drawRoute(rIdx);
+  }
+
+  fitAll(); renderLocList(); save();
+  const n = locations.filter(l => locKey(l) === locKey(clone)).length;
+  toast(`Revisiting "${clone.name}" (visit ${n})`);
 }
 
 // ── Delete location (chain reconnect) ─────────────────────────────────────────
@@ -2610,6 +3062,22 @@ document.getElementById('btn-pick-loc').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && pickMode) exitPickMode(); });
+
+// ── Left-panel tabs + multi-select toggle ─────────────────────────────────────
+multiSelect = localStorage.getItem('trip-mapper-multi-select') === '1';
+activeTab = localStorage.getItem('trip-mapper-active-tab') === 'routes' ? 'routes' : 'pins';
+function setActiveTab(tab) {
+  activeTab = tab === 'routes' ? 'routes' : 'pins';
+  localStorage.setItem('trip-mapper-active-tab', activeTab);
+  renderLocList();
+}
+document.getElementById('tab-pins').addEventListener('click', () => setActiveTab('pins'));
+document.getElementById('tab-routes').addEventListener('click', () => setActiveTab('routes'));
+document.getElementById('btn-multiselect').addEventListener('click', () => {
+  multiSelect = !multiSelect;
+  localStorage.setItem('trip-mapper-multi-select', multiSelect ? '1' : '0');
+  updateTabBar();
+});
 
 map.on('click', async e => {
   if (!pickMode) return;
@@ -2789,15 +3257,22 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   locations = []; routes = []; routeLayers = []; routeHitLayers = []; routeEmojiMarkers = []; clearSelection();
   renderLocList(); save();
 });
-// Ctrl/Cmd+A selects all stops (unless typing in a field), for bulk editing.
+// Ctrl/Cmd+A selects every item in the active tab — all routes on the Routes tab, all
+// stops on the Pins tab (unless typing in a field), for bulk editing.
 document.addEventListener('keydown', e => {
   if (!(e.ctrlKey || e.metaKey) || (e.key !== 'a' && e.key !== 'A')) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   if (!locations.length) return;
+  if (activeTab === 'routes') {
+    if (!routes.length) return;
+    sel = { kind: 'route', idxs: routes.map((_, i) => i) };
+  } else {
+    sel = { kind: 'loc', idxs: locations.map((_, i) => i) };
+  }
+  selAnchor = sel.idxs[sel.idxs.length - 1];
+  expandedPalette = null;
   e.preventDefault();
-  sel = { kind: 'loc', idxs: locations.map((_, i) => i) };
-  selAnchor = 0;
   renderLocList();
 });
 

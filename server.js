@@ -30,7 +30,11 @@ const server = http.createServer((req, res) => {
   }
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(filePath)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': TYPES[path.extname(filePath)] || 'application/octet-stream',
+      // Never cache during local dev, so edits to app.js/css show up on a plain reload.
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    });
     res.end(data);
   });
 });
