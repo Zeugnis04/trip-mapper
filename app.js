@@ -101,6 +101,7 @@ function makeRouteEmojiRow(targets) {
   // Only the targeted segments' emoji markers need redrawing — not their geometry.
   const apply = async (fn) => {
     ids.forEach(i => { if (routes[i]) fn(routes[i]); });
+    if (routes[ids[0]]) rememberRouteStyle(routes[ids[0]]);
     ids.forEach(i => redrawRouteEmojiOnly(i));
     renderLocList(); save();
   };
@@ -132,6 +133,7 @@ function makeRouteEmojiRow(targets) {
   slider.addEventListener('change', () => {
     const v = parseInt(slider.value, 10);
     ids.forEach(i => { if (routes[i]) routes[i].emojiSize = v; });
+    if (routes[ids[0]]) rememberRouteStyle(routes[ids[0]]);
     ids.forEach(i => redrawRouteEmojiOnly(i));
     save();
   });
@@ -303,6 +305,11 @@ let paletteApplyMode = 'same'; // 'same' | 'sequential' | 'bytype'
 let markerPaletteApplyMode = 'all'; // 'all' | 'sequential'
 const paletteOrder = {};
 const panelScrollPositions = {};
+let lastPinStyle = null;
+let lastLabelStyle = null;
+let lastRouteStyle = null;
+let lastMarkerPalette = null;
+let lastRoutePalette = null;
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_STATIC = URL_PARAMS.get('static') === '1';
 const IS_EMBED  = IS_STATIC || URL_PARAMS.get('embed') === '1' || URL_PARAMS.get('embed') === 'true';
@@ -349,19 +356,206 @@ function toast(msg) {
 }
 
 // ── Geocoding ─────────────────────────────────────────────────────────────────
-const NOMINATIM_LANG = navigator.language || 'en';
+const NOMINATIM_LANG = (navigator.languages && navigator.languages.length ? navigator.languages.join(',') : navigator.language) || 'en';
+const GEOCODE_LIMIT = 8;
+const GEOCODE_CACHE_LIMIT = 60;
+const GEOCODE_CACHE = new Map();
+const SEARCH_FEATURE_TYPES = new Set(['country', 'state', 'city', 'settlement']);
+const SEARCH_LAYERS = new Set(['address', 'poi', 'railway', 'natural', 'manmade']);
+let nominatimQueue = Promise.resolve();
+let nominatimAvailableAt = 0;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function preferredLanguageCodes() {
+  const langs = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en']);
+  const codes = [];
+  langs.forEach(lang => {
+    if (!lang) return;
+    const code = lang.toLowerCase();
+    codes.push(code);
+    const base = code.split('-')[0];
+    if (base && base !== code) codes.push(base);
+  });
+  codes.push('en');
+  return [...new Set(codes)];
+}
+
+function parseCoordinateSearch(query) {
+  const match = query.trim().match(/^(-?\d+(?:\.\d+)?)\s*(?:,|\s)\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  let first = parseFloat(match[1]);
+  let second = parseFloat(match[2]);
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+
+  let lat = first;
+  let lng = second;
+  if (Math.abs(first) > 90 && Math.abs(second) <= 90) {
+    lat = second;
+    lng = first;
+  }
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+function parseSearchOptions(query) {
+  const options = { countryCodes: '', featureType: '', layer: '' };
+  const countryCodes = new Set();
+  const layers = new Set();
+  let text = ` ${query.trim()} `;
+
+  text = text.replace(/\s(?:country|cc)\s*[:=]\s*([a-z]{2}(?:\s*,\s*[a-z]{2})*)/gi, (_, rawCodes) => {
+    rawCodes.split(',').map(c => c.trim().toLowerCase()).filter(c => /^[a-z]{2}$/.test(c))
+      .forEach(code => countryCodes.add(code));
+    return ' ';
+  });
+
+  const typePattern = '(?:country|state|city|settlement|address|poi|railway|natural|manmade)';
+  const typeRe = new RegExp(`\\s(?:type|layer)\\s*[:=]\\s*(${typePattern}(?:\\s*,\\s*${typePattern})*)`, 'gi');
+  text = text.replace(typeRe, (_, rawTypes) => {
+    rawTypes.split(',').map(t => t.trim().toLowerCase()).forEach(type => {
+      if (SEARCH_FEATURE_TYPES.has(type)) {
+        options.featureType = type;
+      } else if (SEARCH_LAYERS.has(type)) {
+        layers.add(type);
+      }
+    });
+    return ' ';
+  });
+
+  options.countryCodes = [...countryCodes].join(',');
+  options.layer = options.featureType ? '' : [...layers].join(',');
+  return { text: text.replace(/\s+/g, ' ').trim(), ...options };
+}
+
+function getMapSearchViewbox() {
+  if (!map || typeof map.getBounds !== 'function' || map.getZoom() < 4) return '';
+  const bounds = map.getBounds();
+  const west = Math.max(-180, Math.min(180, bounds.getWest()));
+  const south = Math.max(-90, Math.min(90, bounds.getSouth()));
+  const east = Math.max(-180, Math.min(180, bounds.getEast()));
+  const north = Math.max(-90, Math.min(90, bounds.getNorth()));
+  if (![west, south, east, north].every(Number.isFinite) || west >= east || south >= north) return '';
+  if ((east - west) > 170 && (north - south) > 70) return '';
+  return [west, south, east, north].map(v => v.toFixed(5)).join(',');
+}
+
+function cacheGeocodeResult(key, results) {
+  GEOCODE_CACHE.set(key, results);
+  while (GEOCODE_CACHE.size > GEOCODE_CACHE_LIMIT) {
+    GEOCODE_CACHE.delete(GEOCODE_CACHE.keys().next().value);
+  }
+}
+
+function buildNominatimSearchUrl(query, options) {
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('limit', String(GEOCODE_LIMIT));
+  url.searchParams.set('q', query);
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('namedetails', '1');
+  url.searchParams.set('dedupe', '1');
+  url.searchParams.set('accept-language', NOMINATIM_LANG);
+  if (options.countryCodes) url.searchParams.set('countrycodes', options.countryCodes);
+  if (options.featureType) url.searchParams.set('featureType', options.featureType);
+  if (options.layer) url.searchParams.set('layer', options.layer);
+  if (options.viewbox) url.searchParams.set('viewbox', options.viewbox);
+  return url;
+}
+
+async function fetchNominatimJson(url) {
+  const run = nominatimQueue.then(async () => {
+    const wait = nominatimAvailableAt - Date.now();
+    if (wait > 0) await sleep(wait);
+    nominatimAvailableAt = Date.now() + 1100;
+    const res = await fetch(url, { headers: { 'Accept-Language': NOMINATIM_LANG } });
+    if (!res.ok) throw new Error(`Nominatim returned ${res.status}`);
+    return res.json();
+  });
+  nominatimQueue = run.catch(() => {});
+  return run;
+}
+
+function formatAddress(address = {}) {
+  const parts = [
+    [address.house_number, address.road].filter(Boolean).join(' '),
+    address.neighbourhood || address.suburb || address.city_district,
+    address.city || address.town || address.village || address.hamlet,
+    address.state,
+    address.country,
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
+function pickResultName(result, displayName) {
+  const details = result.namedetails || {};
+  for (const code of preferredLanguageCodes()) {
+    if (details[`name:${code}`]) return details[`name:${code}`];
+  }
+  return result.name || details.name || result.address?.amenity || result.address?.shop ||
+    result.address?.tourism || result.address?.historic || displayName.split(',')[0].trim();
+}
+
+function normalizeNominatimResult(result) {
+  const lat = parseFloat(result.lat);
+  const lng = parseFloat(result.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const displayName = result.display_name || formatAddress(result.address) || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const sourceId = result.osm_type && result.osm_id ? `${result.osm_type}:${result.osm_id}` : '';
+  return {
+    name: pickResultName(result, displayName),
+    displayName,
+    lat,
+    lng,
+    sourceId,
+  };
+}
+
+function dedupeGeocodeResults(results) {
+  const seen = new Set();
+  return results.filter(result => {
+    const key = result.sourceId || `${result.name}|${result.lat.toFixed(5)}|${result.lng.toFixed(5)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function geocodeSearch(query) {
-  const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&q=${encodeURIComponent(query)}`, { headers: { 'Accept-Language': NOMINATIM_LANG } });
-  return (await res.json()).map(r => ({
-    name: r.name || r.display_name.split(',')[0].trim(),
-    displayName: r.display_name,
-    lat: parseFloat(r.lat), lng: parseFloat(r.lon),
-  }));
+  const coords = parseCoordinateSearch(query);
+  if (coords) {
+    return [{
+      name: 'Coordinates',
+      displayName: `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`,
+      lat: coords.lat,
+      lng: coords.lng,
+      sourceId: `coord:${coords.lat.toFixed(6)},${coords.lng.toFixed(6)}`,
+    }];
+  }
+
+  const parsed = parseSearchOptions(query);
+  if (!parsed.text) return [];
+  const options = { ...parsed, viewbox: getMapSearchViewbox() };
+  const cacheKey = JSON.stringify({ q: parsed.text, countryCodes: parsed.countryCodes, featureType: parsed.featureType, layer: parsed.layer, viewbox: options.viewbox, lang: NOMINATIM_LANG });
+  if (GEOCODE_CACHE.has(cacheKey)) return GEOCODE_CACHE.get(cacheKey);
+
+  const data = await fetchNominatimJson(buildNominatimSearchUrl(parsed.text, options));
+  const results = dedupeGeocodeResults(data.map(normalizeNominatimResult).filter(Boolean));
+  cacheGeocodeResult(cacheKey, results);
+  return results;
 }
 async function reverseGeocode(lat, lng) {
   try {
-    const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`, { headers: { 'Accept-Language': NOMINATIM_LANG } });
-    const data = await res.json();
+    const url = new URL('https://nominatim.openstreetmap.org/reverse');
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('lat', lat);
+    url.searchParams.set('lon', lng);
+    url.searchParams.set('addressdetails', '1');
+    url.searchParams.set('namedetails', '1');
+    url.searchParams.set('accept-language', NOMINATIM_LANG);
+    const data = await fetchNominatimJson(url);
     return (data.name || data.display_name || '').split(',')[0].trim() || 'My Location';
   } catch { return 'My Location'; }
 }
@@ -675,11 +869,138 @@ const LABEL_STYLE_KEYS = [
   'labelTextAlign','labelBg','labelBorderColor','labelArrow','labelOffsetX','labelOffsetY','labelWidth',
   'labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
 ];
+const MARKER_STYLE_KEYS = [
+  'shape','markerColor','markerSize','ringGap','markerBorderColor','markerShowNumber','markerNumberColor',
+];
+const ROUTE_STYLE_KEYS = ['color','dash','dashScale','shape','weight','emoji','emojiSize','emojiBg'];
+
+function styleFrom(source, keys) {
+  if (!source) return null;
+  const style = {};
+  keys.forEach(key => {
+    if (key in source) style[key] = source[key];
+  });
+  return Object.keys(style).length ? style : null;
+}
+
+function applyStyleKeys(target, style, keys) {
+  if (!target || !style) return target;
+  keys.forEach(key => {
+    if (key in style) target[key] = style[key];
+  });
+  return target;
+}
+
+function effectiveLabelBorderColor(loc) {
+  return loc?.labelBorderColor || loc?.markerColor || '#89b4fa';
+}
+
+function pinStyleFromLoc(loc) {
+  return styleFrom(loc, MARKER_STYLE_KEYS);
+}
+
+function labelStyleFromLoc(loc) {
+  const style = styleFrom(loc, LABEL_STYLE_KEYS);
+  if (style) style.labelBorderColor = effectiveLabelBorderColor(loc);
+  return style;
+}
+
+function routeStyleFromRoute(route) {
+  return styleFrom(route, ROUTE_STYLE_KEYS);
+}
+
+function cleanStyleObject(value, keys) {
+  if (!value || typeof value !== 'object') return null;
+  return styleFrom(value, keys);
+}
+
+function cleanPaletteMemory(value, modes) {
+  if (!value || typeof value !== 'object') return null;
+  if (!modes.includes(value.mode) || !Array.isArray(value.colors) || !value.colors.length) return null;
+  const colors = value.colors.filter(Boolean);
+  return colors.length ? { mode: value.mode, colors } : null;
+}
+
+function rememberPinStyle(loc) {
+  lastPinStyle = pinStyleFromLoc(loc) || lastPinStyle;
+}
+
+function rememberLabelStyle(loc) {
+  lastLabelStyle = labelStyleFromLoc(loc) || lastLabelStyle;
+}
+
+function rememberRouteStyle(route) {
+  lastRouteStyle = routeStyleFromRoute(route) || lastRouteStyle;
+}
+
+function rememberCurrentSelectionStyles() {
+  if (sel.kind === 'loc' && sel.idxs.length === 1 && locations[sel.idxs[0]]) {
+    rememberPinStyle(locations[sel.idxs[0]]);
+    rememberLabelStyle(locations[sel.idxs[0]]);
+  } else if (sel.kind === 'route' && sel.idxs.length === 1 && routes[sel.idxs[0]]) {
+    rememberRouteStyle(routes[sel.idxs[0]]);
+  }
+}
+
+function styleMemorySettings() {
+  return {
+    lastPinStyle,
+    lastLabelStyle,
+    lastRouteStyle,
+    lastMarkerPalette,
+    lastRoutePalette,
+  };
+}
+
+function applyStyleMemorySettings(memory = {}) {
+  lastPinStyle = cleanStyleObject(memory.lastPinStyle, MARKER_STYLE_KEYS);
+  lastLabelStyle = cleanStyleObject(memory.lastLabelStyle, LABEL_STYLE_KEYS);
+  lastRouteStyle = cleanStyleObject(memory.lastRouteStyle, ROUTE_STYLE_KEYS);
+  lastMarkerPalette = cleanPaletteMemory(memory.lastMarkerPalette, ['sequential']);
+  lastRoutePalette = cleanPaletteMemory(memory.lastRoutePalette, ['sequential', 'bytype']);
+}
+
+function markerPaletteColorForIndex(index) {
+  const colors = lastMarkerPalette?.colors || [];
+  if (lastMarkerPalette?.mode !== 'sequential' || !colors.length) return undefined;
+  return colors[index % colors.length];
+}
+
+function routePaletteColorForIndex(index, type) {
+  const colors = lastRoutePalette?.colors || [];
+  if (!colors.length) return undefined;
+  if (lastRoutePalette.mode === 'sequential') return colors[index % colors.length];
+  if (lastRoutePalette.mode === 'bytype') {
+    const typeIdx = Object.keys(TYPE_EMOJI).indexOf(type);
+    return colors[(typeIdx >= 0 ? typeIdx : 0) % colors.length];
+  }
+  return undefined;
+}
+
+function rememberMarkerPalette(colors, selectedColor) {
+  if (markerPaletteApplyMode === 'sequential') {
+    lastMarkerPalette = { mode: 'sequential', colors: [...colors] };
+  } else {
+    lastMarkerPalette = null;
+    lastPinStyle = { ...(lastPinStyle || {}), markerColor: selectedColor };
+  }
+}
+
+function rememberRoutePalette(colors, selectedColor = undefined) {
+  if (colors && (paletteApplyMode === 'sequential' || paletteApplyMode === 'bytype')) {
+    lastRoutePalette = { mode: paletteApplyMode, colors: [...colors] };
+  } else {
+    lastRoutePalette = null;
+    if (selectedColor !== undefined) lastRouteStyle = { ...(lastRouteStyle || {}), color: selectedColor };
+  }
+}
 
 function locWithInheritedLabelStyle(loc, previousLoc) {
   const next = normalizeLoc(loc);
-  if (!previousLoc) return next;
-  LABEL_STYLE_KEYS.forEach(key => { next[key] = previousLoc[key]; });
+  applyStyleKeys(next, lastPinStyle || pinStyleFromLoc(previousLoc), MARKER_STYLE_KEYS);
+  applyStyleKeys(next, lastLabelStyle || labelStyleFromLoc(previousLoc), LABEL_STYLE_KEYS);
+  const markerColor = markerPaletteColorForIndex(locations.length);
+  if (markerColor !== undefined) next.markerColor = markerColor;
   return next;
 }
 
@@ -1090,7 +1411,7 @@ function makeStylePanel(routeIdx, route) {
   typeSwatch.className = 'swatch' + (route.color == null ? ' active' : '');
   typeSwatch.style.background = typeMeta.color;
   typeSwatch.title = 'Type default';
-  typeSwatch.addEventListener('click', async () => { routes[routeIdx].color = null; await redrawRoute(routeIdx); });
+  typeSwatch.addEventListener('click', async () => { lastRoutePalette = null; routes[routeIdx].color = null; await redrawRoute(routeIdx); });
   colorRow.appendChild(typeSwatch);
 
   // Solid color swatches
@@ -1098,7 +1419,7 @@ function makeStylePanel(routeIdx, route) {
     const sw = document.createElement('div');
     sw.className = 'swatch' + (route.color === hex ? ' active' : '');
     sw.style.background = hex; sw.title = hex;
-    sw.addEventListener('click', async () => { routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
+    sw.addEventListener('click', async () => { lastRoutePalette = null; routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
     colorRow.appendChild(sw);
   });
 
@@ -1108,7 +1429,7 @@ function makeStylePanel(routeIdx, route) {
   const customFill = document.createElement('div'); customFill.className = 'swatch-custom-fill';
   const colorInput = document.createElement('input'); colorInput.type = 'color';
   colorInput.value = route.color || typeMeta.color;
-  colorInput.addEventListener('input', async () => { routes[routeIdx].color = colorInput.value; await redrawRoute(routeIdx); });
+  colorInput.addEventListener('input', async () => { lastRoutePalette = null; routes[routeIdx].color = colorInput.value; await redrawRoute(routeIdx); });
   customWrap.appendChild(customFill); customWrap.appendChild(colorInput);
   colorRow.appendChild(customWrap);
   panel.appendChild(colorRow);
@@ -1181,7 +1502,7 @@ function makeStylePanel(routeIdx, route) {
         sw.className = 'swatch' + (route.color === hex ? ' active' : '');
         sw.style.cssText = `background:${hex};width:20px;height:20px;`;
         sw.title = hex;
-        sw.addEventListener('click', async () => { routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
+        sw.addEventListener('click', async () => { lastRoutePalette = null; routes[routeIdx].color = hex; await redrawRoute(routeIdx); });
         swatchRow.appendChild(sw);
       });
       body.appendChild(swatchRow);
@@ -1202,28 +1523,32 @@ function makeStylePanel(routeIdx, route) {
       body.appendChild(orderRow);
     }
 
-    const applyAllBtn = document.createElement('button');
-    applyAllBtn.className = 'palette-apply';
-    applyAllBtn.textContent = !orderedColors ? 'Reset all to type default' :
-      paletteApplyMode === 'same' ? 'Apply selected color to all segments' : 'Apply to all segments';
-    applyAllBtn.addEventListener('click', async () => {
-      if (!orderedColors) {
-        routes.forEach(r => { r.color = null; });
-      } else if (paletteApplyMode === 'same') {
-        const color = currentRouteColor();
-        routes.forEach(r => { r.color = color; });
-      } else if (paletteApplyMode === 'bytype') {
-        routes.forEach(r => {
-          const ti = typeKeys.indexOf(r.type);
-          r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length];
-        });
-      } else {
-        routes.forEach((r, i) => { r.color = orderedColors[i % orderedColors.length]; });
-      }
-      rebuildMarkers();
-      await rebuildAllRoutes();
-      renderLocList(); save();
-    });
+	    const applyAllBtn = document.createElement('button');
+	    applyAllBtn.className = 'palette-apply';
+	    applyAllBtn.textContent = !orderedColors ? 'Reset all to type default' :
+	      paletteApplyMode === 'same' ? 'Apply selected color to all segments' : 'Apply to all segments';
+	    applyAllBtn.addEventListener('click', async () => {
+	      if (!orderedColors) {
+	        routes.forEach(r => { r.color = null; });
+	        rememberRoutePalette(null, null);
+	      } else if (paletteApplyMode === 'same') {
+	        const color = currentRouteColor();
+	        routes.forEach(r => { r.color = color; });
+	        rememberRoutePalette(null, color);
+	      } else if (paletteApplyMode === 'bytype') {
+	        routes.forEach(r => {
+	          const ti = typeKeys.indexOf(r.type);
+	          r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length];
+	        });
+	        rememberRoutePalette(orderedColors);
+	      } else {
+	        routes.forEach((r, i) => { r.color = orderedColors[i % orderedColors.length]; });
+	        rememberRoutePalette(orderedColors);
+	      }
+	      rebuildMarkers();
+	      await rebuildAllRoutes();
+	      renderLocList(); save();
+	    });
     body.appendChild(applyAllBtn);
 
     entry.appendChild(body);
@@ -1363,11 +1688,12 @@ function makeStylePanel(routeIdx, route) {
   allBtn.className = 'palette-apply';
   allBtn.textContent = '↓ Apply line style to all segments';
   allBtn.title = 'Copy dash, density, line shape and width to every segment (colours unchanged)';
-  allBtn.addEventListener('click', async () => {
-    const src = routes[routeIdx];
-    routes.forEach(r => { r.dash = src.dash; r.dashScale = src.dashScale; r.shape = src.shape; r.weight = src.weight; });
-    await rebuildAllRoutes(); renderLocList(); save();
-  });
+	  allBtn.addEventListener('click', async () => {
+	    const src = routes[routeIdx];
+	    rememberRouteStyle(src);
+	    routes.forEach(r => { r.dash = src.dash; r.dashScale = src.dashScale; r.shape = src.shape; r.weight = src.weight; });
+	    await rebuildAllRoutes(); renderLocList(); save();
+	  });
   allRow.appendChild(allBtn);
   panel.appendChild(allRow);
 
@@ -1380,9 +1706,11 @@ function makeStylePanel(routeIdx, route) {
   typeStyleBtn.className = 'palette-apply';
   typeStyleBtn.textContent = `↓ Apply style to all ${TYPE_EMOJI[route.type] || ''} ${route.type} (${sameType})`;
   typeStyleBtn.title = `Copy this segment's full style — colour, dash, density, line shape, width and emoji — to every ${route.type} segment`;
-  typeStyleBtn.addEventListener('click', async () => {
-    const src = routes[routeIdx];
-    routes.forEach(r => {
+	  typeStyleBtn.addEventListener('click', async () => {
+	    const src = routes[routeIdx];
+	    lastRoutePalette = null;
+	    rememberRouteStyle(src);
+	    routes.forEach(r => {
       if (r.type !== src.type) return;
       r.color = src.color; r.dash = src.dash; r.dashScale = src.dashScale;
       r.shape = src.shape; r.weight = src.weight;
@@ -1404,11 +1732,14 @@ async function redrawRoute(idx) {
 }
 
 function applyMarkerColorToAll(color) {
+  lastMarkerPalette = null;
+  lastPinStyle = { ...(lastPinStyle || {}), markerColor: color };
   locations.forEach(l => { l.markerColor = color; });
   rebuildMarkers(); renderLocList(); save();
 }
 
 function applyMarkerNumberStyleToAll(sourceLoc) {
+  rememberPinStyle(sourceLoc);
   locations.forEach(l => {
     l.markerShowNumber = sourceLoc.markerShowNumber ?? true;
     l.markerNumberColor = sourceLoc.markerNumberColor || '#18181b';
@@ -1417,6 +1748,7 @@ function applyMarkerNumberStyleToAll(sourceLoc) {
 }
 
 function applyMarkerSizeToAll(size) {
+  lastPinStyle = { ...(lastPinStyle || {}), markerSize: size };
   locations.forEach(l => { l.markerSize = size; });
   rebuildMarkers(); renderLocList(); save();
 }
@@ -1425,6 +1757,8 @@ function applyMarkerSizeToAll(size) {
 // gap) to every stop — the pin equivalent of "apply line style to all segments".
 function applyMarkerStyleToAll(src) {
   if (!src) return;
+  lastMarkerPalette = null;
+  rememberPinStyle(src);
   locations.forEach(l => {
     l.markerColor = src.markerColor;
     l.shape = src.shape || 'circle';
@@ -1438,6 +1772,7 @@ function applyMarkerStyleToAll(src) {
 }
 
 function applyMarkerPalette(colors, selectedColor = colors[0]) {
+  rememberMarkerPalette(colors, selectedColor);
   if (markerPaletteApplyMode === 'sequential') {
     locations.forEach((l, i) => { l.markerColor = colors[i % colors.length]; });
   } else {
@@ -1520,10 +1855,11 @@ function makeMarkerPaletteControls(locIdx, loc) {
       sw.className = 'swatch' + (loc.markerColor === hex ? ' active' : '');
       sw.style.cssText = `background:${hex};width:20px;height:20px;`;
       sw.title = hex;
-      sw.addEventListener('click', () => {
-        locations[locIdx].markerColor = hex;
-        rebuildMarkers(); renderLocList(); save();
-      });
+	      sw.addEventListener('click', () => {
+	        lastMarkerPalette = null;
+	        locations[locIdx].markerColor = hex;
+	        rebuildMarkers(); renderLocList(); save();
+	      });
       swatchRow.appendChild(sw);
     });
     body.appendChild(swatchRow);
@@ -1567,7 +1903,10 @@ function makeMarkerPaletteControls(locIdx, loc) {
 function appendMarkerPalettes(panel, targetIdxs) {
   const first = locations[targetIdxs[0]] || {};
   const recolor = (fn) => { targetIdxs.forEach((i, k) => { if (locations[i]) fn(locations[i], k); }); };
-  const refresh = () => { rebuildMarkers(); renderLocList(); save(); };
+  const refresh = () => {
+    if (locations[targetIdxs[0]]) rememberPinStyle(locations[targetIdxs[0]]);
+    rebuildMarkers(); renderLocList(); save();
+  };
 
   const palToggle = document.createElement('button');
   palToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
@@ -1621,8 +1960,8 @@ function appendMarkerPalettes(panel, targetIdxs) {
       const sw = document.createElement('div');
       sw.className = 'swatch' + (first.markerColor === hex ? ' active' : '');
       sw.style.cssText = `background:${hex};width:20px;height:20px;`;
-      sw.title = hex;
-      sw.addEventListener('click', () => { recolor(l => { l.markerColor = hex; }); refresh(); });
+	      sw.title = hex;
+	      sw.addEventListener('click', () => { lastMarkerPalette = null; recolor(l => { l.markerColor = hex; }); refresh(); });
       swatchRow.appendChild(sw);
     });
     body.appendChild(swatchRow);
@@ -1637,18 +1976,20 @@ function appendMarkerPalettes(panel, targetIdxs) {
 
     const applyBtn = document.createElement('button');
     applyBtn.className = 'palette-apply';
-    applyBtn.textContent = markerPaletteApplyMode === 'sequential'
-      ? 'Apply sequentially across selected'
-      : 'Apply selected color to selected pins';
-    applyBtn.addEventListener('click', () => {
-      if (markerPaletteApplyMode === 'sequential') {
-        recolor((l, k) => { l.markerColor = orderedColors[k % orderedColors.length]; });
-      } else {
-        const c = orderedColors.includes(first.markerColor) ? first.markerColor : orderedColors[0];
-        recolor(l => { l.markerColor = c; });
-      }
-      refresh();
-    });
+	    applyBtn.textContent = markerPaletteApplyMode === 'sequential'
+	      ? 'Apply sequentially across selected'
+	      : 'Apply selected color to selected pins';
+	    applyBtn.addEventListener('click', () => {
+	      if (markerPaletteApplyMode === 'sequential') {
+	        rememberMarkerPalette(orderedColors, orderedColors[0]);
+	        recolor((l, k) => { l.markerColor = orderedColors[k % orderedColors.length]; });
+	      } else {
+	        const c = orderedColors.includes(first.markerColor) ? first.markerColor : orderedColors[0];
+	        rememberMarkerPalette(orderedColors, c);
+	        recolor(l => { l.markerColor = c; });
+	      }
+	      refresh();
+	    });
     body.appendChild(applyBtn);
 
     entry.appendChild(body);
@@ -1794,14 +2135,14 @@ function makeLocEditPanel(locIdx) {
     sw.className = 'swatch' + (loc.markerColor === hex ? ' active' : '');
     sw.style.background = hex;
     sw.title = hex;
-    sw.addEventListener('click', () => { locations[locIdx].markerColor = hex; rebuildMarkers(); renderLocList(); save(); });
+    sw.addEventListener('click', () => { lastMarkerPalette = null; locations[locIdx].markerColor = hex; rebuildMarkers(); renderLocList(); save(); });
     colorRow.appendChild(sw);
   });
   const cWrap = document.createElement('div'); cWrap.className = 'swatch-custom'; cWrap.title = 'Custom';
   const cFill = document.createElement('div'); cFill.className = 'swatch-custom-fill';
   const cInput = document.createElement('input'); cInput.type = 'color';
   cInput.value = loc.markerColor || '#89b4fa';
-  cInput.addEventListener('input', () => { locations[locIdx].markerColor = cInput.value; rebuildMarkers(); save(); });
+  cInput.addEventListener('input', () => { lastMarkerPalette = null; locations[locIdx].markerColor = cInput.value; rebuildMarkers(); save(); });
   cWrap.appendChild(cFill); cWrap.appendChild(cInput);
   colorRow.appendChild(cWrap);
   panel.appendChild(colorRow);
@@ -2127,30 +2468,33 @@ function makeLocEditPanel(locIdx) {
     adv.appendChild(row);
   });
 
-  // Apply all labels button
-  const lblAllRow = document.createElement('div'); lblAllRow.className = 'lep-row';
-  lblAllRow.style.justifyContent = 'flex-end';
-  const lblAllBtn = document.createElement('button');
-  lblAllBtn.className = 'palette-apply'; lblAllBtn.textContent = '↓ Apply label style to all stops';
-  lblAllBtn.addEventListener('click', () => {
-    const src = locations[locIdx];
-    const keys = [
-      'labelMode','labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
-      'labelPos','labelRound','labelSize','labelNumberSize','labelTextAlign','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
-    ];
-    locations.forEach((l, j) => {
-      if (j === locIdx) return;
-      // A recurring stop (same place as an earlier stop) keeps its own label
-      // visibility — applying a style shouldn't re-reveal labels you've hidden to
-      // avoid overlap. Its other label styling is still synced.
-      const isRecurring = locations.findIndex(o => locKey(o) === locKey(l)) !== j;
-      keys.forEach(k => {
-        if (k === 'labelMode' && isRecurring) return;
-        l[k] = src[k];
-      });
-    });
-    rebuildMarkers(); renderLocList(); save();
-  });
+	  // Apply all labels button
+	  const lblAllRow = document.createElement('div'); lblAllRow.className = 'lep-row';
+	  lblAllRow.style.justifyContent = 'flex-end';
+	  const lblAllBtn = document.createElement('button');
+	  lblAllBtn.className = 'palette-apply'; lblAllBtn.textContent = '↓ Apply label style to all stops';
+	  lblAllBtn.addEventListener('click', () => {
+	    const src = locations[locIdx];
+	    const borderColor = effectiveLabelBorderColor(src);
+	    src.labelBorderColor = borderColor;
+	    const keys = [
+	      'labelMode','labelShowNumber','labelShowName','labelShowDate','labelShowNotes',
+	      'labelPos','labelRound','labelSize','labelNumberSize','labelTextAlign','labelNumberColor','labelTextColor','labelBg','labelBorderColor','labelArrow',
+	    ];
+	    locations.forEach((l, j) => {
+	      if (j === locIdx) return;
+	      // A recurring stop (same place as an earlier stop) keeps its own label
+	      // visibility — applying a style shouldn't re-reveal labels you've hidden to
+	      // avoid overlap. Its other label styling is still synced.
+	      const isRecurring = locations.findIndex(o => locKey(o) === locKey(l)) !== j;
+	      keys.forEach(k => {
+	        if (k === 'labelMode' && isRecurring) return;
+	        l[k] = k === 'labelBorderColor' ? borderColor : src[k];
+	      });
+	    });
+	    rememberLabelStyle(src);
+	    rebuildMarkers(); renderLocList(); save();
+	  });
   lblAllRow.appendChild(lblAllBtn);
   adv.appendChild(lblAllRow);
 
@@ -2169,7 +2513,10 @@ function appendRoutePalettes(panel, targetIdxs) {
   const first = routes[targetIdxs[0]] || {};
   const typeKeys = Object.keys(TYPE_EMOJI);
   const recolor = (fn) => { targetIdxs.forEach((i, k) => { if (routes[i]) fn(routes[i], k); }); };
-  const refresh = async () => { await rebuildAllRoutes(); renderLocList(); save(); };
+  const refresh = async () => {
+    if (routes[targetIdxs[0]]) rememberRouteStyle(routes[targetIdxs[0]]);
+    await rebuildAllRoutes(); renderLocList(); save();
+  };
 
   const palToggle = document.createElement('button');
   palToggle.className = 'sp-section-toggle' + (showPalettes ? ' open' : '');
@@ -2227,7 +2574,7 @@ function appendRoutePalettes(panel, targetIdxs) {
         sw.className = 'swatch' + (first.color === hex ? ' active' : '');
         sw.style.cssText = `background:${hex};width:20px;height:20px;`;
         sw.title = hex;
-        sw.addEventListener('click', async () => { recolor(r => { r.color = hex; }); await refresh(); });
+        sw.addEventListener('click', async () => { lastRoutePalette = null; recolor(r => { r.color = hex; }); await refresh(); });
         swatchRow.appendChild(sw);
       });
       body.appendChild(swatchRow);
@@ -2242,22 +2589,26 @@ function appendRoutePalettes(panel, targetIdxs) {
     }
 
     const applyBtn = document.createElement('button');
-    applyBtn.className = 'palette-apply';
-    applyBtn.textContent = !orderedColors ? 'Reset selected to type default' :
-      paletteApplyMode === 'same' ? 'Apply selected color to selected segments' : 'Apply to selected segments';
-    applyBtn.addEventListener('click', async () => {
-      if (!orderedColors) {
-        recolor(r => { r.color = null; });
-      } else if (paletteApplyMode === 'same') {
-        const c = first.color ?? orderedColors[0];
-        recolor(r => { r.color = c; });
-      } else if (paletteApplyMode === 'bytype') {
-        recolor(r => { const ti = typeKeys.indexOf(r.type); r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length]; });
-      } else {
-        recolor((r, k) => { r.color = orderedColors[k % orderedColors.length]; });
-      }
-      await refresh();
-    });
+	    applyBtn.className = 'palette-apply';
+	    applyBtn.textContent = !orderedColors ? 'Reset selected to type default' :
+	      paletteApplyMode === 'same' ? 'Apply selected color to selected segments' : 'Apply to selected segments';
+	    applyBtn.addEventListener('click', async () => {
+	      if (!orderedColors) {
+	        recolor(r => { r.color = null; });
+	        rememberRoutePalette(null, null);
+	      } else if (paletteApplyMode === 'same') {
+	        const c = first.color ?? orderedColors[0];
+	        recolor(r => { r.color = c; });
+	        rememberRoutePalette(null, c);
+	      } else if (paletteApplyMode === 'bytype') {
+	        recolor(r => { const ti = typeKeys.indexOf(r.type); r.color = orderedColors[(ti >= 0 ? ti : 0) % orderedColors.length]; });
+	        rememberRoutePalette(orderedColors);
+	      } else {
+	        recolor((r, k) => { r.color = orderedColors[k % orderedColors.length]; });
+	        rememberRoutePalette(orderedColors);
+	      }
+	      await refresh();
+	    });
     body.appendChild(applyBtn);
 
     entry.appendChild(body);
@@ -2272,9 +2623,10 @@ function makeBulkRoutePanel(idxs) {
   panel.className = 'style-panel';
   const first = routes[idxs[0]] || {};
   const apply = fn => idxs.forEach(i => { if (routes[i]) fn(routes[i]); });
-  const refresh = async () => { await rebuildAllRoutes(); renderLocList(); save(); };
+  const rememberBulkRouteStyle = () => { if (routes[idxs[0]]) rememberRouteStyle(routes[idxs[0]]); };
+  const refresh = async () => { rememberBulkRouteStyle(); await rebuildAllRoutes(); renderLocList(); save(); };
   // Slider edits must not re-render the panel (would reset the slider mid-drag).
-  const refreshRoutesOnly = async () => { await rebuildAllRoutes(); save(); };
+  const refreshRoutesOnly = async () => { rememberBulkRouteStyle(); await rebuildAllRoutes(); save(); };
 
   const colorRow = document.createElement('div');
   colorRow.className = 'sp-row-wrap';
@@ -2346,10 +2698,15 @@ function makeBulkLocPanel(idxs) {
   panel.className = 'loc-edit-panel';
   const first = locations[idxs[0]] || {};
   const apply = fn => idxs.forEach(i => { if (locations[i]) fn(locations[i]); });
-  const refresh = () => { rebuildMarkers(); renderLocList(); save(); };
+  const rememberBulkLocStyle = () => {
+    if (!locations[idxs[0]]) return;
+    rememberPinStyle(locations[idxs[0]]);
+    rememberLabelStyle(locations[idxs[0]]);
+  };
+  const refresh = () => { rememberBulkLocStyle(); rebuildMarkers(); renderLocList(); save(); };
   // Slider edits update the map but must NOT re-render this panel (that would
   // reset the slider/indicator mid-drag); they reflect the first selected stop.
-  const refreshMarkersOnly = () => { rebuildMarkers(); save(); };
+  const refreshMarkersOnly = () => { rememberBulkLocStyle(); rebuildMarkers(); save(); };
 
   const colorRow = document.createElement('div');
   colorRow.className = 'sp-row-wrap';
@@ -2500,6 +2857,10 @@ function restorePanelScrollPositions(root) {
     const saved = panelScrollPositions[node.dataset.scrollKey];
     if (saved != null) node.scrollTop = saved;
   });
+}
+
+function detailPanelScrollKey() {
+  return sel.kind && sel.idxs.length ? `detail:${sel.kind}:${sel.idxs.join(',')}` : '';
 }
 
 // Reflect the active tab and the multi-select toggle in the tab bar chrome.
@@ -2730,9 +3091,12 @@ function renderDetailPanel() {
 
   const body = document.createElement('div');
   body.className = 'detail-body';
+  const scrollKey = detailPanelScrollKey();
+  if (scrollKey) body.dataset.scrollKey = scrollKey;
   body.appendChild(content);
   panel.appendChild(body);
   restorePanelScrollPositions(panel);
+  requestAnimationFrame(() => restorePanelScrollPositions(panel));
 }
 
 // ── Change route type ─────────────────────────────────────────────────────────
@@ -2757,9 +3121,18 @@ function fitAll() {
   map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
 }
 
+function fitRecentPins(count = 3) {
+  if (!locations.length) return;
+  map.invalidateSize();
+  const recent = locations.slice(-count);
+  const bounds = L.latLngBounds(recent.map(l => [l.lat, l.lng]));
+  map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+}
+
 // ── Storage ───────────────────────────────────────────────────────────────────
 function save() {
   if (IS_EMBED) return;
+  rememberCurrentSelectionStyles();
   localStorage.setItem('trip-mapper-v2', JSON.stringify(makeTripData()));
 }
 
@@ -2809,6 +3182,7 @@ function currentSettings() {
     customPalettes: customPalettes.map(p => ({ name: p.name, colors: [...p.colors] })),
     customCss: localStorage.getItem('trip-mapper-custom-css') || '',
     paletteOrder: paletteOrderSettings(),
+    styleMemory: styleMemorySettings(),
   };
 }
 
@@ -2838,6 +3212,7 @@ function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   }
 
   applyPaletteOrderSettings(settings.paletteOrder || {});
+  applyStyleMemorySettings(settings.styleMemory || {});
   applyUiTheme(uiTheme, { persist });
   document.getElementById('theme-select').value = mapTheme;
   setMapTheme(mapTheme);
@@ -2912,7 +3287,16 @@ async function rebuildAll() {
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
-  return { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
+  const route = { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
+  applyStyleKeys(route, lastRouteStyle, ROUTE_STYLE_KEYS);
+  route.fromIdx = fromIdx;
+  route.toIdx = toIdx;
+  route.type = nextRouteType;
+  route.curveCtrl = null;
+  route.hidden = false;
+  const paletteColor = routePaletteColorForIndex(routes.length, route.type);
+  if (paletteColor !== undefined) route.color = paletteColor;
+  return route;
 }
 
 async function addLocationAuto(name, lat, lng) {
@@ -2927,7 +3311,7 @@ async function addLocationAuto(name, lat, lng) {
     await drawRoute(rIdx);
   }
 
-  fitAll(); renderLocList(); save();
+  fitRecentPins(3); renderLocList(); save();
   toast(`Added "${name}"`);
 }
 
@@ -2957,7 +3341,7 @@ async function revisitLocation(srcIdx) {
     await drawRoute(rIdx);
   }
 
-  fitAll(); renderLocList(); save();
+  fitRecentPins(3); renderLocList(); save();
   const n = locations.filter(l => locKey(l) === locKey(clone)).length;
   toast(`Revisiting "${clone.name}" (visit ${n})`);
 }
@@ -3011,49 +3395,75 @@ async function moveLocation(from, to) {
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
-let searchDebounce = null;
+const searchInput = document.getElementById('loc-search');
+const searchDrop = document.getElementById('search-drop');
+const searchHelpBtn = document.getElementById('btn-search-help');
+const searchGuide = document.getElementById('search-guide');
+
+function setSearchGuideOpen(open) {
+  searchGuide.hidden = !open;
+  searchHelpBtn.classList.toggle('active', open);
+  searchHelpBtn.setAttribute('aria-expanded', String(open));
+}
 
 function showSearchResults(results) {
-  const drop = document.getElementById('search-drop');
-  drop.innerHTML = '';
+  searchDrop.innerHTML = '';
   if (!results.length) {
-    drop.innerHTML = '<div class="s-item" style="cursor:default;color:var(--fg2);">No results found.</div>';
-    drop.style.display = 'flex'; return;
+    const empty = document.createElement('div');
+    empty.className = 's-item search-empty';
+    empty.textContent = 'No results found. Try adding a city, country:xx, or type:address,poi.';
+    searchDrop.appendChild(empty);
+    searchDrop.style.display = 'flex'; return;
   }
   results.forEach(r => {
     const item = document.createElement('div');
     item.className = 's-item';
-    item.innerHTML = `<div class="s-item-name">${r.name}</div><div class="s-item-sub">${r.displayName}</div>`;
+    const name = document.createElement('div');
+    name.className = 's-item-name';
+    name.textContent = r.name;
+    const sub = document.createElement('div');
+    sub.className = 's-item-sub';
+    sub.textContent = r.displayName;
+    item.title = r.displayName;
+    item.appendChild(name);
+    item.appendChild(sub);
     item.addEventListener('click', () => {
-      drop.style.display = 'none';
-      document.getElementById('loc-search').value = '';
+      searchDrop.style.display = 'none';
+      searchInput.value = '';
       addLocationAuto(r.name, r.lat, r.lng);
     });
-    drop.appendChild(item);
+    searchDrop.appendChild(item);
   });
-  drop.style.display = 'flex';
+  searchDrop.style.display = 'flex';
 }
 
 async function doSearch() {
-  const q = document.getElementById('loc-search').value.trim(); if (!q) return;
+  const q = searchInput.value.trim(); if (!q) return;
   const btn = document.getElementById('btn-search');
+  setSearchGuideOpen(false);
   btn.textContent = '…'; btn.disabled = true;
   try { showSearchResults(await geocodeSearch(q)); }
   catch { toast('Search failed. Check your connection.'); }
   btn.textContent = 'Go'; btn.disabled = false;
 }
 
-document.getElementById('loc-search').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
-document.getElementById('loc-search').addEventListener('input', () => {
-  clearTimeout(searchDebounce);
-  const q = document.getElementById('loc-search').value.trim();
-  if (!q) { document.getElementById('search-drop').style.display = 'none'; return; }
-  searchDebounce = setTimeout(doSearch, 500);
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+searchInput.addEventListener('input', () => {
+  searchDrop.style.display = 'none';
 });
 document.getElementById('btn-search').addEventListener('click', doSearch);
+searchHelpBtn.addEventListener('click', () => setSearchGuideOpen(searchGuide.hidden));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    searchDrop.style.display = 'none';
+    setSearchGuideOpen(false);
+  }
+});
 document.addEventListener('click', e => {
   if (!e.target.closest('#search-drop') && !e.target.closest('#loc-search') && e.target.id !== 'btn-search')
-    document.getElementById('search-drop').style.display = 'none';
+    searchDrop.style.display = 'none';
+  if (!e.target.closest('#search-guide') && !e.target.closest('#btn-search-help') && !e.target.closest('#loc-search'))
+    setSearchGuideOpen(false);
 });
 
 // ── Pick on map ───────────────────────────────────────────────────────────────

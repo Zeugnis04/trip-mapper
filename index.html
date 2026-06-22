@@ -53,7 +53,17 @@
         </div>
         <div class="form-row form-row-tight">
           <input class="flex-fill" id="loc-search" type="text" placeholder="Search a place…" />
+          <button class="btn search-help-toggle" id="btn-search-help" type="button" title="Search syntax" aria-expanded="false" aria-controls="search-guide">?</button>
           <button class="btn btn-accent btn-search" id="btn-search">Go</button>
+        </div>
+        <div id="search-guide" class="search-guide" hidden>
+          <div><code>JRタワーステラプレイス 札幌</code> or <code>Unter den Linden 1, Berlin</code></div>
+          <div><code>37.5665, 126.9780</code> for coordinates</div>
+          <div class="search-guide-muted">Google Maps tip: after searching there, copy the <code>@lat,lng</code> coordinates from the URL before moving the map.</div>
+          <div><code>country:jp,kr cafe</code> filters multiple countries</div>
+          <div><code>type:address,poi 札幌駅</code> searches address and POI layers</div>
+          <div><code>type=city Sapporo</code> narrows to one place type</div>
+          <div class="search-guide-muted">Use <code>:</code> or <code>=</code>. Commas help addresses. Results are biased toward the current map view.</div>
         </div>
         <div id="search-drop"></div>
         <button class="btn btn-green btn-full" id="btn-pick-loc">Pick on map</button>
