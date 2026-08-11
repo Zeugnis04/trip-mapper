@@ -2904,7 +2904,7 @@ function detailPanelScrollKey() {
 function updateTabBar() {
   document.getElementById('tab-pins')?.classList.toggle('active', activeTab === 'pins');
   document.getElementById('tab-routes')?.classList.toggle('active', activeTab === 'routes');
-  document.getElementById('btn-history')?.classList.toggle('active', activeTab === 'history');
+  document.getElementById('tab-history')?.classList.toggle('active', activeTab === 'history');
   const ms = document.getElementById('btn-multiselect');
   if (ms) {
     ms.hidden = activeTab === 'history';
@@ -2924,7 +2924,6 @@ function renderLocList() {
   rememberPanelScrollPositions(el);
 
   el.innerHTML = '';
-
   if (activeTab === 'history') {
     renderHistoryList(el);
     renderSavedHistoryOverlays();
@@ -3695,13 +3694,14 @@ function setActiveTab(tab) {
     queuedHoverLookup = null;
     areaHoverEl?.setAttribute('hidden', '');
     if (hoverAreaLayer) { map.removeLayer(hoverAreaLayer); hoverAreaLayer = null; }
+    if (historyOverlayLayer) { map.removeLayer(historyOverlayLayer); historyOverlayLayer = null; }
   }
   localStorage.setItem('trip-mapper-active-tab', activeTab);
   renderLocList();
 }
 document.getElementById('tab-pins').addEventListener('click', () => setActiveTab('pins'));
 document.getElementById('tab-routes').addEventListener('click', () => setActiveTab('routes'));
-document.getElementById('btn-history').addEventListener('click', () => setActiveTab('history'));
+document.getElementById('tab-history').addEventListener('click', () => setActiveTab('history'));
 document.getElementById('btn-multiselect').addEventListener('click', () => {
   multiSelect = !multiSelect;
   localStorage.setItem('trip-mapper-multi-select', multiSelect ? '1' : '0');
