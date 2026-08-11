@@ -718,6 +718,7 @@ async function drawRoute(idx) {
     const layer = L.polyline(points, { ...polylineOpts(route), interactive: false }).addTo(map);
     const hitWeight = Math.max((route.weight ?? ROUTE_META[route.type].weight) + 14, 22);
     const hit = L.polyline(points, { weight: hitWeight, opacity: 0, interactive: true }).addTo(map);
+    hit.bindTooltip(`${from.name} → ${to.name}`, { sticky: true, direction: 'top', className: 'route-name-tooltip' });
     hit.on('click', e => {
       L.DomEvent.stop(e);
       selectItem('route', idx, clickMods(e.originalEvent));
