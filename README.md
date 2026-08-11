@@ -2,6 +2,11 @@
 
 A lightweight browser-based tool for mapping trips with custom stops, routes, and labels. Runs as a plain website *and* as a Chrome extension.
 
+The **History** tab keeps a separate list of countries and provinces/states you
+have visited, stopped by, or passed through. Click the map to select a
+province/state, or double-click to select a country. History is saved with the
+trip and is included in exported JSON.
+
 ## Install as a Chrome extension
 
 **From a release (easiest):** download `trip-mapper-extension.zip` from the

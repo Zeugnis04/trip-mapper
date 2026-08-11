@@ -38,7 +38,7 @@
     <button class="btn btn-yellow" id="btn-import">Import</button>
     <button class="btn"            id="btn-image">Image</button>
     <button class="btn"            id="btn-embed">Embed</button>
-    <button class="btn"            id="btn-css">CSS</button>
+    <button class="btn"            id="btn-history">History</button>
     <button class="btn"            id="btn-reset-labels" title="Snap every label back to its default position">Reset Labels</button>
     <button class="btn btn-red"    id="btn-clear">Clear</button>
     <input class="hidden-file-input" id="file-input" type="file" accept=".json" />
@@ -78,7 +78,7 @@
       <div class="item-list" id="loc-list"></div>
     </div>
     <div class="resize-handle" id="resize-left" title="Drag to resize"></div>
-    <div id="map"></div>
+    <div id="map"><div id="area-hover" aria-live="polite" hidden></div></div>
     <div class="resize-handle" id="resize-right" title="Drag to resize"></div>
     <aside id="detail-panel" class="is-empty"></aside>
   </div>

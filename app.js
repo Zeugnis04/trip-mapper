@@ -253,6 +253,9 @@ const LOC_SHAPES = {
 // ── State ─────────────────────────────────────────────────────────────────────
 let locations    = [];
 let routes       = [];
+// Areas recorded independently of map stops, including places merely passed through.
+let travelHistory = [];
+let pendingHistoryEntry = null;
 let locMarkers   = [];
 let routeLayers  = [];
 let routeHitLayers = [];                            // invisible wide lines for easier clicking
@@ -324,9 +327,21 @@ const IS_EMBED  = IS_STATIC || URL_PARAMS.get('embed') === '1' || URL_PARAMS.get
 const map = L.map('map', {
   zoomSnap: 0,
   zoomDelta: 0.5,
-  wheelPxPerZoomLevel: 100,
+  // Trackpads emit many smaller wheel deltas than a mouse. A lower threshold
+  // makes their zoom feel responsive while leaving the +/- controls unchanged.
+  wheelPxPerZoomLevel: 25,
+  doubleClickZoom: false,
+  // OSM repeats horizontally. Keep the interaction in the canonical copy so
+  // overlays and reverse-geocoded coordinates do not drift past ±180°.
+  worldCopyJump: true,
   preferCanvas: true,
 }).setView([20, 0], 2);
+map.createPane('country-selection');
+map.getPane('country-selection').style.zIndex = 350;
+map.createPane('area-hover');
+map.getPane('area-hover').style.zIndex = 340;
+map.createPane('history-overlay');
+map.getPane('history-overlay').style.zIndex = 330;
 let tileLayer = null;
 function setMapTheme(key) {
   const t = THEMES[key] || THEMES.voyager;
@@ -398,6 +413,11 @@ function parseCoordinateSearch(query) {
   }
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
+}
+
+function canonicalLatLng(latlng) {
+  const lng = ((latlng.lng + 180) % 360 + 360) % 360 - 180;
+  return L.latLng(latlng.lat, lng);
 }
 
 function parseSearchOptions(query) {
@@ -510,6 +530,9 @@ function normalizeNominatimResult(result) {
     lat,
     lng,
     sourceId,
+    address: result.address || {},
+    addresstype: result.addresstype || result.type || '',
+    category: result.category || result.class || '',
   };
 }
 
@@ -548,16 +571,29 @@ async function geocodeSearch(query) {
 }
 async function reverseGeocode(lat, lng) {
   try {
-    const url = new URL('https://nominatim.openstreetmap.org/reverse');
-    url.searchParams.set('format', 'jsonv2');
-    url.searchParams.set('lat', lat);
-    url.searchParams.set('lon', lng);
-    url.searchParams.set('addressdetails', '1');
-    url.searchParams.set('namedetails', '1');
-    url.searchParams.set('accept-language', NOMINATIM_LANG);
-    const data = await fetchNominatimJson(url);
+    const data = await reverseGeocodeData(lat, lng);
     return (data.name || data.display_name || '').split(',')[0].trim() || 'My Location';
   } catch { return 'My Location'; }
+}
+
+// Nominatim provides both the administrative name under the pointer and (on a
+// country-level request) a GeoJSON boundary. Requests use the same queue as the
+// normal search, keeping the public service rate-limited.
+async function reverseGeocodeData(lat, lng, { zoom, polygon = false } = {}) {
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('lat', lat);
+  url.searchParams.set('lon', lng);
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('namedetails', '1');
+  url.searchParams.set('accept-language', NOMINATIM_LANG);
+  if (Number.isInteger(zoom)) url.searchParams.set('zoom', String(zoom));
+  if (polygon) {
+    url.searchParams.set('polygon_geojson', '1');
+    // Keep the outline detailed enough to preserve coastlines and province edges.
+    url.searchParams.set('polygon_threshold', '0.001');
+  }
+  return fetchNominatimJson(url);
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -2867,8 +2903,10 @@ function detailPanelScrollKey() {
 function updateTabBar() {
   document.getElementById('tab-pins')?.classList.toggle('active', activeTab === 'pins');
   document.getElementById('tab-routes')?.classList.toggle('active', activeTab === 'routes');
+  document.getElementById('btn-history')?.classList.toggle('active', activeTab === 'history');
   const ms = document.getElementById('btn-multiselect');
   if (ms) {
+    ms.hidden = activeTab === 'history';
     ms.classList.toggle('active', multiSelect);
     ms.title = multiSelect
       ? 'Multi-select on: click items to add/remove without Ctrl'
@@ -2879,11 +2917,18 @@ function updateTabBar() {
 function renderLocList() {
   renderNextModeBtns();
   updateTabBar();
+  document.body.classList.toggle('history-active', activeTab === 'history');
   const el = document.getElementById('loc-list');
   const listScrollTop = el.scrollTop;
   rememberPanelScrollPositions(el);
 
   el.innerHTML = '';
+
+  if (activeTab === 'history') {
+    renderHistoryList(el);
+    renderSavedHistoryOverlays();
+    return;
+  }
 
   if (!locations.length) {
     el.innerHTML = '<div class="empty-hint">Search a place or click "Pick on map" to start your trip.</div>';
@@ -3029,6 +3074,115 @@ function renderRoutesList(el) {
 
     el.appendChild(item);
   }
+}
+
+// ── History tab ──────────────────────────────────────────────────────────────
+function renderHistoryList(el) {
+  const intro = document.createElement('div');
+  intro.className = 'history-intro';
+  intro.textContent = 'Use Add from map, then pause over an area to preview it. Click for a province/state; double-click for a country.';
+  el.appendChild(intro);
+
+  const mapPick = document.createElement('button');
+  mapPick.className = 'btn btn-accent btn-full';
+  mapPick.textContent = historyMapPick ? 'Cancel map selection' : 'Add from map';
+  mapPick.addEventListener('click', () => {
+    historyMapPick = !historyMapPick;
+    if (!historyMapPick) clearAreaHover();
+    renderLocList();
+  });
+  el.appendChild(mapPick);
+
+  if (selectedArea) {
+    const card = document.createElement('div'); card.className = 'history-selection';
+    const title = document.createElement('div'); title.className = 'history-selection-title'; title.textContent = selectedArea.name;
+    const type = document.createElement('div'); type.className = 'history-selection-type'; type.textContent = HISTORY_KIND_LABELS[selectedArea.kind];
+    const actions = document.createElement('div'); actions.className = 'history-selection-actions';
+    const saved = travelHistory.find(item => item.kind === selectedArea.kind && item.name.toLocaleLowerCase() === selectedArea.name.toLocaleLowerCase());
+    [['visited', 'Traveled'], ['stopped', 'Stopped by'], ['passed', 'Passed through'], ['lived', 'Lived']].forEach(([status, label]) => {
+      const button = document.createElement('button'); button.className = `history-status-btn ${status}`;
+      button.textContent = label; button.classList.toggle('active', saved?.status === status);
+      button.addEventListener('click', () => saveAreaToHistory(selectedArea.name, selectedArea.kind, status, selectedArea.countryName, selectedArea.geometry));
+      actions.appendChild(button);
+    });
+    card.append(title, type, actions); el.appendChild(card);
+  }
+
+  if (pendingHistoryEntry) {
+    const card = document.createElement('div'); card.className = 'history-selection';
+    const title = document.createElement('div'); title.className = 'history-selection-title'; title.textContent = pendingHistoryEntry.name;
+    const type = document.createElement('div'); type.className = 'history-selection-type'; type.textContent = 'Choose your stay mode before adding';
+    const actions = document.createElement('div'); actions.className = 'history-selection-actions';
+    [['visited', 'Traveled'], ['stopped', 'Stopped by'], ['passed', 'Passed through'], ['lived', 'Lived']].forEach(([status, label]) => {
+      const button = document.createElement('button'); button.className = `history-status-btn ${status}`; button.textContent = label;
+      button.addEventListener('click', () => {
+        addTravelHistoryEntry(pendingHistoryEntry.name, pendingHistoryEntry.kind, status, pendingHistoryEntry.country);
+        pendingHistoryEntry = null; renderLocList(); scrollHistoryToLast();
+      });
+      actions.appendChild(button);
+    });
+    card.append(title, type, actions); el.appendChild(card);
+  }
+
+  const form = document.createElement('div'); form.className = 'history-form';
+  const place = document.createElement('input'); place.type = 'text'; place.placeholder = 'Search country or province…'; place.maxLength = 120;
+  const results = document.createElement('div'); results.className = 'history-search-results';
+  let timer = null;
+  place.addEventListener('input', () => {
+    clearTimeout(timer); results.innerHTML = '';
+    const query = place.value.trim(); if (query.length < 2) return;
+    timer = setTimeout(async () => {
+      try {
+        const matches = (await geocodeSearch(query)).filter(r => ['country', 'state', 'province', 'region'].includes(r.addresstype) || r.category === 'boundary').slice(0, 6);
+        matches.forEach(r => {
+          const item = document.createElement('button'); item.className = 'history-search-result';
+          item.textContent = r.displayName;
+          item.addEventListener('click', () => {
+            const kind = r.addresstype === 'country' || r.address?.country === r.name ? 'country' : 'province';
+            pendingHistoryEntry = { name: r.name, kind, country: r.address?.country || '' };
+            renderLocList();
+          });
+          results.appendChild(item);
+        });
+        if (!matches.length) results.textContent = 'No country or province found.';
+      } catch { results.textContent = 'Search unavailable.'; }
+    }, 250);
+  });
+  form.append(place); el.appendChild(form); el.appendChild(results);
+
+  const counts = travelHistory.reduce((all, item) => { all[item.status] = (all[item.status] || 0) + 1; return all; }, {});
+  const summary = document.createElement('div'); summary.className = 'history-summary';
+  summary.textContent = travelHistory.length
+    ? `${travelHistory.length} saved · ${counts.visited || 0} traveled · ${counts.stopped || 0} stopped by · ${counts.passed || 0} passed through · ${counts.lived || 0} lived`
+    : 'No places saved yet.';
+  el.appendChild(summary);
+
+  const list = document.createElement('div'); list.className = 'history-list';
+  [...travelHistory].sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
+    const idx = travelHistory.indexOf(item);
+    const row = document.createElement('div'); row.className = 'history-item';
+    row.style.setProperty('--history-status-color', TRAVEL_STATUS_COLORS[item.status]);
+    const info = document.createElement('div'); info.className = 'history-item-info';
+    const name = document.createElement('div'); name.className = 'history-item-name'; name.textContent = item.name;
+    const meta = document.createElement('div'); meta.className = 'history-item-meta';
+    meta.textContent = `${HISTORY_KIND_LABELS[item.kind]} · ${HISTORY_STATUS_LABELS[item.status]}`;
+    info.append(name, meta);
+    const itemStatus = document.createElement('select'); itemStatus.className = 'history-item-status';
+    Object.entries(HISTORY_STATUS_LABELS).forEach(([value, label]) => itemStatus.add(new Option(label, value, false, value === item.status)));
+    itemStatus.addEventListener('change', () => {
+      travelHistory[idx].status = itemStatus.value;
+      refreshSelectedAreaStyle(item.name, item.kind, itemStatus.value);
+      save(); renderLocList();
+    });
+    const remove = document.createElement('button'); remove.className = 'btn btn-red history-remove'; remove.textContent = 'Remove';
+    remove.addEventListener('click', () => {
+      travelHistory.splice(idx, 1);
+      refreshSelectedAreaStyle(item.name, item.kind, null);
+      save(); renderLocList();
+    });
+    row.append(info, itemStatus, remove); list.appendChild(row);
+  });
+  el.appendChild(list);
 }
 
 function setOnlyPins(v) {
@@ -3192,7 +3346,27 @@ function makeTripData() {
     settings: currentSettings(),
     locations,
     routes,
+    travelHistory,
   };
+}
+
+function normalizeTravelHistory(items) {
+  if (!Array.isArray(items)) return [];
+  const validKinds = new Set(['country', 'province']);
+  const validStatuses = new Set(['visited', 'stopped', 'passed', 'lived']);
+  const seen = new Set();
+  return items.reduce((history, item) => {
+    const name = typeof item?.name === 'string' ? item.name.trim().replace(/\s+/g, ' ') : '';
+    const kind = validKinds.has(item?.kind) ? item.kind : 'country';
+    const status = validStatuses.has(item?.status) ? item.status : 'visited';
+    const key = `${kind}:${name.toLocaleLowerCase()}`;
+    if (!name || seen.has(key)) return history;
+    seen.add(key);
+    const country = typeof item?.country === 'string' ? item.country.trim().replace(/\s+/g, ' ') : '';
+    const geometry = item?.geometry && ['Polygon', 'MultiPolygon'].includes(item.geometry.type) ? item.geometry : null;
+    history.push({ name, kind, status, country, geometry });
+    return history;
+  }, []);
 }
 
 function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
@@ -3242,6 +3416,7 @@ async function applyTripData(data, { persist = true } = {}) {
   const d = Array.isArray(data) ? { locations: data, routes: [], settings: {} } : (data || {});
   locations = (d.locations || []).map(normalizeLoc);
   routes = (d.routes || []).map(normalizeRoute);
+  travelHistory = normalizeTravelHistory(d.travelHistory);
   migrateLegacyRouteEmoji(d.routes, d.settings || {});
   applyTripSettings(d.settings || {}, { persist });
   clearSelection();
@@ -3257,6 +3432,7 @@ function load() {
     const d = JSON.parse(raw);
     locations = (d.locations || []).map(normalizeLoc);
     routes = (d.routes || []).map(normalizeRoute);
+    travelHistory = normalizeTravelHistory(d.travelHistory);
     migrateLegacyRouteEmoji(d.routes, d.settings || {});
     applyTripSettings(d.settings || {}, { persist: false });
   } catch {}
@@ -3287,7 +3463,9 @@ async function rebuildAll() {
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
-  const route = { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'route', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
+  // New trip segments use the editable curved path by default. Existing saved
+  // trips retain their own `shape` setting when they are loaded.
+  const route = { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'curve', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
   applyStyleKeys(route, lastRouteStyle, ROUTE_STYLE_KEYS);
   route.fromIdx = fromIdx;
   route.toIdx = toIdx;
@@ -3501,14 +3679,28 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && pickMode) 
 
 // ── Left-panel tabs + multi-select toggle ─────────────────────────────────────
 multiSelect = localStorage.getItem('trip-mapper-multi-select') === '1';
-activeTab = localStorage.getItem('trip-mapper-active-tab') === 'routes' ? 'routes' : 'pins';
+activeTab = ['pins', 'routes', 'history'].includes(localStorage.getItem('trip-mapper-active-tab')) ? localStorage.getItem('trip-mapper-active-tab') : 'pins';
 function setActiveTab(tab) {
-  activeTab = tab === 'routes' ? 'routes' : 'pins';
+  activeTab = ['pins', 'routes', 'history'].includes(tab) ? tab : 'pins';
+  if (activeTab === 'history') {
+    clearSelection();
+    // Province/state borders are easiest to recognise around this level. Keep
+    // the user's current centre, only backing out when they were zoomed in.
+    if (map.getZoom() > 6) map.setZoom(6, { animate: true });
+  }
+  if (activeTab !== 'history') {
+    clearTimeout(areaHoverTimer);
+    areaHoverToken++;
+    queuedHoverLookup = null;
+    areaHoverEl?.setAttribute('hidden', '');
+    if (hoverAreaLayer) { map.removeLayer(hoverAreaLayer); hoverAreaLayer = null; }
+  }
   localStorage.setItem('trip-mapper-active-tab', activeTab);
   renderLocList();
 }
 document.getElementById('tab-pins').addEventListener('click', () => setActiveTab('pins'));
 document.getElementById('tab-routes').addEventListener('click', () => setActiveTab('routes'));
+document.getElementById('btn-history').addEventListener('click', () => setActiveTab('history'));
 document.getElementById('btn-multiselect').addEventListener('click', () => {
   multiSelect = !multiSelect;
   localStorage.setItem('trip-mapper-multi-select', multiSelect ? '1' : '0');
@@ -3517,9 +3709,10 @@ document.getElementById('btn-multiselect').addEventListener('click', () => {
 
 map.on('click', async e => {
   if (!pickMode) return;
+  e._tripMapperPicking = true;
   const editIdx = pickEditIdx;
   exitPickMode();
-  const { lat, lng } = e.latlng;
+  const { lat, lng } = canonicalLatLng(e.latlng);
   const btn = document.getElementById('btn-pick-loc');
   btn.innerHTML = `${ICONS.pin} Resolving…`; btn.disabled = true;
   const name = await reverseGeocode(lat, lng);
@@ -3529,6 +3722,169 @@ map.on('click', async e => {
   } else {
     await updateLocationFromPlace(editIdx, { name, lat, lng });
   }
+});
+
+// ── Map area lookup and country selection ────────────────────────────────────
+const areaHoverEl = document.getElementById('area-hover');
+const areaNameCache = new Map();
+let areaHoverTimer = null;
+let areaHoverToken = 0;
+let hoverLookupBusy = false;
+let queuedHoverLookup = null;
+let hoverAreaLayer = null;
+let countrySelectionLayer = null;
+let countrySelectionToken = 0;
+let selectedArea = null;
+let historyMapPick = false;
+let historyOverlayLayer = null;
+const TRAVEL_STATUS_COLORS = { visited: '#22a06b', stopped: '#d08b12', passed: '#3b82f6', lived: '#8b5cf6' };
+
+function selectedAreaStyle(status) {
+  const color = TRAVEL_STATUS_COLORS[status] || '#a78bfa';
+  return { color, weight: 2.5, fillColor: color, fillOpacity: status ? 0.2 : 0.13 };
+}
+
+function renderSavedHistoryOverlays() {
+  if (historyOverlayLayer) { map.removeLayer(historyOverlayLayer); historyOverlayLayer = null; }
+  if (activeTab !== 'history') return;
+  const features = travelHistory.filter(entry => entry.geometry).map(entry => ({
+    type: 'Feature', geometry: entry.geometry,
+    properties: {
+      status: entry.status,
+      name: entry.kind === 'province' && entry.country ? `${entry.name}, ${entry.country}` : entry.name,
+    },
+  }));
+  if (!features.length) return;
+  historyOverlayLayer = L.geoJSON({ type: 'FeatureCollection', features }, {
+    pane: 'history-overlay', interactive: true,
+    style: feature => selectedAreaStyle(feature.properties.status),
+    onEachFeature: (feature, layer) => {
+      layer.bindTooltip(feature.properties.name, { sticky: true, direction: 'top', className: 'history-area-tooltip' });
+    },
+  }).addTo(map);
+}
+
+function administrativeName(data) {
+  const address = data?.address || {};
+  return address.state || address.province || address.region || address.county || address.country || '';
+}
+
+function positionAreaHover(point) {
+  const padding = 14;
+  areaHoverEl.style.left = `${Math.min(point.x + padding, map.getSize().x - 250)}px`;
+  areaHoverEl.style.top = `${Math.min(point.y + padding, map.getSize().y - 30)}px`;
+}
+
+function clearAreaHover() {
+  clearTimeout(areaHoverTimer); areaHoverToken++; queuedHoverLookup = null;
+  areaHoverEl.textContent = ''; areaHoverEl.hidden = true;
+  if (hoverAreaLayer) { map.removeLayer(hoverAreaLayer); hoverAreaLayer = null; }
+}
+
+map.on('mousemove', e => {
+  if (pickMode || activeTab !== 'history' || !historyMapPick) return;
+  const latlng = canonicalLatLng(e.latlng);
+  positionAreaHover(map.latLngToContainerPoint(e.latlng));
+  const key = `${latlng.lat.toFixed(2)},${latlng.lng.toFixed(2)}`;
+  clearTimeout(areaHoverTimer);
+  const token = ++areaHoverToken;
+  const cached = areaNameCache.get(key);
+  if (cached) {
+    areaHoverEl.textContent = cached.name;
+    areaHoverEl.hidden = false;
+    drawHoverArea(cached.geojson);
+    return;
+  }
+  areaHoverEl.textContent = 'Loading boundary…';
+  areaHoverEl.hidden = false;
+  if (hoverAreaLayer) { map.removeLayer(hoverAreaLayer); hoverAreaLayer = null; }
+  queuedHoverLookup = { latlng, key, token };
+  startHoverLookup();
+});
+
+function startHoverLookup() {
+  if (hoverLookupBusy || !queuedHoverLookup || activeTab !== 'history') return;
+  clearTimeout(areaHoverTimer);
+  areaHoverTimer = setTimeout(async () => {
+    const request = queuedHoverLookup;
+    queuedHoverLookup = null;
+    hoverLookupBusy = true;
+    try {
+      const data = await reverseGeocodeData(request.latlng.lat, request.latlng.lng, { zoom: 5, polygon: true });
+      const name = administrativeName(data);
+      const geojson = data?.geojson && ['Polygon', 'MultiPolygon'].includes(data.geojson.type) ? data.geojson : null;
+      if (name) areaNameCache.set(request.key, { name, geojson });
+      if (request.token === areaHoverToken && activeTab === 'history') {
+        areaHoverEl.textContent = name;
+        areaHoverEl.hidden = false;
+        drawHoverArea(geojson);
+      }
+    } catch (err) {
+      if (request.token === areaHoverToken && activeTab === 'history') {
+        areaHoverEl.textContent = `Boundary unavailable: ${err.message}`;
+        areaHoverEl.hidden = false;
+      }
+    }
+    finally {
+      hoverLookupBusy = false;
+      if (queuedHoverLookup) startHoverLookup();
+    }
+  }, 100);
+}
+function drawHoverArea(geojson) {
+  if (hoverAreaLayer) { map.removeLayer(hoverAreaLayer); hoverAreaLayer = null; }
+  if (!geojson) return;
+  hoverAreaLayer = L.geoJSON(geojson, {
+    pane: 'area-hover', interactive: false,
+    style: { color: '#f43f8e', weight: 3, opacity: 1, fillColor: '#f43f8e', fillOpacity: 0.04 },
+  }).addTo(map);
+}
+map.on('mouseout', () => {
+  clearAreaHover();
+});
+
+async function selectAdministrativeArea(latlng, kind) {
+  // At most one stale hover lookup may remain; do not let a stream of hover
+  // requests delay a deliberate selection.
+  queuedHoverLookup = null;
+  areaHoverToken++;
+  const token = ++countrySelectionToken;
+  historyMapPick = false;
+  clearAreaHover();
+  toast(`Selecting ${kind === 'country' ? 'country' : 'province/state'}…`);
+  try {
+    const data = await reverseGeocodeData(latlng.lat, latlng.lng, { zoom: kind === 'country' ? 3 : 5, polygon: true });
+    if (token !== countrySelectionToken) return;
+    const name = kind === 'country'
+      ? (data?.address?.country || data?.name || 'Selected country')
+      : (data?.address?.state || data?.address?.province || data?.name || 'Selected province/state');
+    if (!data?.geojson || !['Polygon', 'MultiPolygon'].includes(data.geojson.type)) throw new Error(`No boundary found for ${name}`);
+    if (countrySelectionLayer) map.removeLayer(countrySelectionLayer);
+    const savedStatus = travelHistory.find(item => item.kind === kind && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.status;
+    countrySelectionLayer = L.geoJSON(data.geojson, {
+      pane: 'country-selection',
+      style: selectedAreaStyle(savedStatus),
+      interactive: false,
+    }).addTo(map);
+    selectedArea = { name, kind, countryName: data?.address?.country || '', geometry: data.geojson };
+    if (activeTab === 'history') renderLocList();
+    toast(`${name} selected.`);
+  } catch (err) {
+    if (token === countrySelectionToken) toast(`Area selection failed: ${err.message}`);
+  }
+}
+
+let areaSelectionTimer = null;
+map.on('click', e => {
+  if (pickMode || e._tripMapperPicking || activeTab !== 'history' || !historyMapPick) return;
+  clearTimeout(areaSelectionTimer);
+  // Wait just long enough to distinguish a normal click from a double-click.
+  areaSelectionTimer = setTimeout(() => selectAdministrativeArea(canonicalLatLng(e.latlng), 'province'), 260);
+});
+map.on('dblclick', e => {
+  if (activeTab !== 'history' || !historyMapPick) return;
+  clearTimeout(areaSelectionTimer);
+  selectAdministrativeArea(canonicalLatLng(e.latlng), 'country');
 });
 
 // ── Map theme ─────────────────────────────────────────────────────────────────
@@ -3636,11 +3992,55 @@ document.getElementById('image-close-btn').addEventListener('click', closeImageM
 imageModal.addEventListener('click', e => { if (e.target === imageModal) closeImageModal(); });
 document.getElementById('image-png-btn').addEventListener('click', () => { exportTripPng(imgTransparentEl.checked, imgIncludeMapEl.checked); closeImageModal(); });
 
+// ── Travel history ───────────────────────────────────────────────────────────
+const HISTORY_STATUS_LABELS = { visited: 'Traveled', stopped: 'Stopped by', passed: 'Passed through', lived: 'Lived' };
+const HISTORY_KIND_LABELS = { country: 'Country', province: 'Province / state' };
+
+function addTravelHistoryEntry(rawName, rawKind, rawStatus, rawCountry = '', geometry = null) {
+  const name = (rawName || '').trim().replace(/\s+/g, ' ');
+  if (!name) { toast('Enter a country or province first.'); return false; }
+  const kind = rawKind === 'province' ? 'province' : 'country';
+  const status = ['visited', 'stopped', 'passed', 'lived'].includes(rawStatus) ? rawStatus : 'visited';
+  const country = (rawCountry || '').trim().replace(/\s+/g, ' ');
+  const existing = travelHistory.find(item => item.kind === kind && item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  if (existing) {
+    existing.name = name;
+    existing.status = status;
+    if (country) existing.country = country;
+    if (geometry) existing.geometry = geometry;
+    toast(`Updated ${name}.`);
+  } else {
+    travelHistory.push({ name, kind, status, country, geometry });
+    toast(`Saved ${name}.`);
+  }
+  save();
+  return true;
+}
+
+function saveAreaToHistory(name, kind, status, country = '', geometry = null) {
+  if (!addTravelHistoryEntry(name, kind, status, country, geometry)) return;
+  refreshSelectedAreaStyle(name, kind, status);
+  renderSavedHistoryOverlays();
+  if (activeTab === 'history') { renderLocList(); scrollHistoryToLast(); }
+}
+
+function scrollHistoryToLast() {
+  requestAnimationFrame(() => {
+    const list = document.getElementById('loc-list');
+    if (list) list.scrollTop = list.scrollHeight;
+  });
+}
+
+function refreshSelectedAreaStyle(name, kind, status) {
+  if (!selectedArea || selectedArea.kind !== kind || selectedArea.name.toLocaleLowerCase() !== name.toLocaleLowerCase()) return;
+  countrySelectionLayer?.setStyle(selectedAreaStyle(status));
+}
+
 // ── Custom CSS modal ──────────────────────────────────────────────────────────
 const cssModal    = document.getElementById('css-modal');
 const cssTextarea = document.getElementById('css-editor');
 
-document.getElementById('btn-css').addEventListener('click', () => {
+document.getElementById('btn-css')?.addEventListener('click', () => {
   cssTextarea.value = localStorage.getItem('trip-mapper-custom-css') || '';
   cssModal.hidden = false;
   cssTextarea.focus();
