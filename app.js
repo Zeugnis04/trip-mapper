@@ -17,13 +17,13 @@ const THEMES = {
 
 // ── Route type metadata ───────────────────────────────────────────────────────
 const ROUTE_META = {
-  car:     { color: '#e67e22', dashArray: null,   weight: 4, routing: 'osrm-driving' },
-  walk:    { color: '#27ae60', dashArray: '5 5',  weight: 3, routing: 'osrm-foot'    },
-  bicycle: { color: '#f39c12', dashArray: '5 5',  weight: 3, routing: 'osrm-cycling' },
-  flight:  { color: '#3498db', dashArray: '10 6', weight: 4, routing: 'greatcircle'  },
-  ferry:   { color: '#16a085', dashArray: '5 10', weight: 3, routing: 'straight'     },
-  subway:  { color: '#9b59b6', dashArray: null,   weight: 4, routing: 'straight'     },
-  train:   { color: '#c0392b', dashArray: null,   weight: 4, routing: 'straight'     },
+  car:     { color: '#e67e22', dashArray: null,   weight: 3, routing: 'osrm-driving' },
+  walk:    { color: '#27ae60', dashArray: '5 5',  weight: 2, routing: 'osrm-foot'    },
+  bicycle: { color: '#f39c12', dashArray: '5 5',  weight: 2, routing: 'osrm-cycling' },
+  flight:  { color: '#3498db', dashArray: '10 6', weight: 3, routing: 'greatcircle'  },
+  ferry:   { color: '#16a085', dashArray: '5 10', weight: 2, routing: 'straight'     },
+  subway:  { color: '#9b59b6', dashArray: null,   weight: 3, routing: 'straight'     },
+  train:   { color: '#c0392b', dashArray: null,   weight: 3, routing: 'straight'     },
 };
 
 // ── SVG icon library ──────────────────────────────────────────────────────────
@@ -249,12 +249,16 @@ const LOC_SHAPES = {
   hexagon:  { css: 'clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);border-radius:0;',                                       label: '⬡' },
   star:     { css: 'clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);border-radius:0;',   label: '★' },
 };
+const DEFAULT_TRIP_NAVY = '#1e3a8a';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let locations    = [];
 let routes       = [];
 // Areas recorded independently of map stops, including places merely passed through.
 let travelHistory = [];
+let trips = [];
+let activeTripId = null;
+let passiveTripLayers = new Map();
 let pendingHistoryEntry = null;
 let locMarkers   = [];
 let routeLayers  = [];
@@ -874,22 +878,22 @@ function normalizeLoc(l) {
   return {
     name: l.name, lat: l.lat, lng: l.lng,
     description: l.description || '', date: l.date || '',
-    shape: l.shape || 'circle', markerColor: l.markerColor || null,
+    shape: l.shape || 'ring', markerColor: l.markerColor || DEFAULT_TRIP_NAVY,
     markerSize: l.markerSize ?? 18,
     ringGap: Number.isFinite(l.ringGap) ? l.ringGap : 6,
     markerBorderColor: l.markerBorderColor || null,
     markerShowNumber: l.markerShowNumber ?? true,
-    markerNumberColor: l.markerNumberColor || '#18181b',
+    markerNumberColor: l.markerNumberColor || '#ffffff',
     labelMode:        l.labelMode        || 'always',
     labelPos,
-    labelRound:       l.labelRound       ?? 4,
+    labelRound:       l.labelRound       ?? 0,
     labelSize:        l.labelSize        ?? 11,
     labelNumberSize:  l.labelNumberSize  ?? 85,
-    labelTextAlign:   l.labelTextAlign   || 'center',
+    labelTextAlign:   l.labelTextAlign   || 'left',
     labelTextColor:   l.labelTextColor   || '#18181b',
     labelNumberColor: l.labelNumberColor || l.labelTextColor || '#18181b',
     labelBg:          l.labelBg          ?? '#ffffff',
-    labelBorderColor: l.labelBorderColor ?? null,
+    labelBorderColor: l.labelBorderColor ?? (l.markerColor || DEFAULT_TRIP_NAVY),
     labelArrow:       l.labelArrow       ?? false,
     labelOffsetX:     l.labelOffsetX     ?? defOff.x,
     labelOffsetY:     l.labelOffsetY     ?? defOff.y,
@@ -1034,10 +1038,20 @@ function rememberRoutePalette(colors, selectedColor = undefined) {
 
 function locWithInheritedLabelStyle(loc, previousLoc) {
   const next = normalizeLoc(loc);
-  applyStyleKeys(next, lastPinStyle || pinStyleFromLoc(previousLoc), MARKER_STYLE_KEYS);
-  applyStyleKeys(next, lastLabelStyle || labelStyleFromLoc(previousLoc), LABEL_STYLE_KEYS);
+  // Keep an intentionally styled trip visually coherent without reviving an old
+  // persisted style before the first pin has been added.
+  if (previousLoc) {
+    applyStyleKeys(next, pinStyleFromLoc(previousLoc), MARKER_STYLE_KEYS);
+    applyStyleKeys(next, labelStyleFromLoc(previousLoc), LABEL_STYLE_KEYS);
+  }
+  // A sequential palette is an explicit ordering choice, so continue from the
+  // next palette entry instead of repeating the prior pin's colour.
   const markerColor = markerPaletteColorForIndex(locations.length);
-  if (markerColor !== undefined) next.markerColor = markerColor;
+  if (markerColor !== undefined) {
+    const inheritedBorder = next.labelBorderColor;
+    next.markerColor = markerColor;
+    if (!inheritedBorder || inheritedBorder === previousLoc?.markerColor) next.labelBorderColor = markerColor;
+  }
   return next;
 }
 
@@ -1123,8 +1137,8 @@ function buildTooltipStyles() {
     const text   = loc.labelTextColor   || '#18181b';
     const border = loc.labelBorderColor || loc.markerColor || '#89b4fa';
     const transparentChrome = bg === 'transparent' || border === 'transparent';
-    const align  = loc.labelTextAlign   || 'center';
-    const round  = loc.labelRound       ?? 4;
+    const align  = loc.labelTextAlign   || 'left';
+    const round  = loc.labelRound       ?? 0;
     const size   = loc.labelSize        ?? 11;
     const arrow  = loc.labelArrow       ?? false;
     const drag   = !IS_EMBED && mode === 'always';
@@ -2395,9 +2409,9 @@ function makeLocEditPanel(locIdx) {
   roundRow.innerHTML = '<span class="lep-label">Round</span>';
   const roundSlider = document.createElement('input');
   roundSlider.type='range'; roundSlider.min=0; roundSlider.max=40; roundSlider.step=1;
-  roundSlider.value = loc.labelRound ?? 4; roundSlider.className = 'sp-slider';
+  roundSlider.value = loc.labelRound ?? 0; roundSlider.className = 'sp-slider';
   const roundVal = document.createElement('span'); roundVal.className = 'sp-slider-val';
-  roundVal.textContent = `${loc.labelRound ?? 4}px`;
+  roundVal.textContent = `${loc.labelRound ?? 0}px`;
   roundSlider.addEventListener('input', () => { roundVal.textContent = `${roundSlider.value}px`; });
   roundSlider.addEventListener('change', () => { locations[locIdx].labelRound = parseInt(roundSlider.value); buildTooltipStyles(); save(); });
   roundRow.appendChild(roundSlider); roundRow.appendChild(roundVal);
@@ -2456,7 +2470,7 @@ function makeLocEditPanel(locIdx) {
     ['right', 'Right'],
   ].forEach(([value, label]) => {
     const btn = document.createElement('button');
-    btn.className = 'sp-btn label-align-btn' + ((loc.labelTextAlign || 'center') === value ? ' active' : '');
+    btn.className = 'sp-btn label-align-btn' + ((loc.labelTextAlign || 'left') === value ? ' active' : '');
     btn.textContent = label;
     btn.addEventListener('click', () => {
       preserveLabelScreenPosition(locIdx, () => {
@@ -2930,8 +2944,13 @@ function renderLocList() {
     return;
   }
 
+  renderTripManager(el);
+
   if (!locations.length) {
-    el.innerHTML = '<div class="empty-hint">Search a place or click "Pick on map" to start your trip.</div>';
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = 'Search a place or click "Pick on map" to start your trip.';
+    el.appendChild(hint);
     clearSelection();
     renderDetailPanel();
     return;
@@ -2948,6 +2967,58 @@ function renderLocList() {
   };
   restoreScroll();
   requestAnimationFrame(restoreScroll);
+}
+
+// ── Trips layer manager ──────────────────────────────────────────────────────
+function renderTripManager(el) {
+  const head = document.createElement('div'); head.className = 'trips-head';
+  const add = document.createElement('button'); add.className = 'btn btn-accent'; add.textContent = '+ New trip';
+  add.addEventListener('click', async () => {
+    syncActiveTrip();
+    const n = trips.length + 1;
+    const trip = { id: `trip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: `Trip ${n}`, visible: true, locations: [], routes: [], travelHistory: [] };
+    trips.push(trip);
+    await activateTrip(trip.id);
+    save();
+  });
+  head.appendChild(add); el.appendChild(head);
+
+  trips.forEach(trip => {
+    const row = document.createElement('div'); row.className = `trip-item${trip.id === activeTripId ? ' active' : ''}`;
+    const visibility = document.createElement('button'); visibility.className = `trip-visibility${trip.visible ? ' active' : ''}`;
+    visibility.textContent = trip.visible ? '◉' : '○'; visibility.title = trip.visible ? 'Hide trip on map' : 'Show trip on map';
+    visibility.addEventListener('click', async e => { e.stopPropagation(); trip.visible = !trip.visible; await rebuildAll(); save(); });
+    const name = document.createElement('button'); name.className = 'trip-name'; name.textContent = trip.name; name.title = 'Click to rename';
+    name.addEventListener('click', e => { e.stopPropagation(); editTripName(trip, name); });
+    const meta = document.createElement('span'); meta.className = 'trip-meta'; meta.textContent = `${trip.locations.length} pin${trip.locations.length === 1 ? '' : 's'}`;
+    const remove = document.createElement('button'); remove.className = 'trip-delete'; remove.textContent = '×'; remove.title = 'Delete trip';
+    remove.addEventListener('click', e => { e.stopPropagation(); deleteTrip(trip.id); });
+    row.append(visibility, name, meta, remove);
+    row.addEventListener('click', () => activateTrip(trip.id));
+    el.appendChild(row);
+  });
+}
+
+async function deleteTrip(id) {
+  const trip = trips.find(item => item.id === id);
+  if (!trip || !confirm(`Delete “${trip.name}” and all of its pins and routes?`)) return;
+  syncActiveTrip();
+  const index = trips.indexOf(trip);
+  trips.splice(index, 1);
+  if (!trips.length) trips.push(normalizeTrip({}, 'Trip 1'));
+  if (id === activeTripId) setActiveTripState(trips[Math.min(index, trips.length - 1)]);
+  clearSelection();
+  await rebuildAll();
+  fitAll();
+  save();
+}
+
+function editTripName(trip, button) {
+  const input = document.createElement('input'); input.className = 'trip-name-input'; input.value = trip.name;
+  const finish = () => { trip.name = input.value.trim() || trip.name; save(); renderLocList(); };
+  input.addEventListener('blur', finish, { once: true });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = trip.name; input.blur(); } });
+  button.replaceWith(input); input.focus(); input.select();
 }
 
 // ── Pins tab ──────────────────────────────────────────────────────────────────
@@ -3341,13 +3412,77 @@ function currentSettings() {
 }
 
 function makeTripData() {
+  syncActiveTrip();
   return {
-    version: 2,
+    version: 3,
     settings: currentSettings(),
-    locations,
-    routes,
-    travelHistory,
+    trips: trips.map(trip => ({
+      id: trip.id, name: trip.name, visible: trip.visible !== false,
+      locations: trip.locations, routes: trip.routes, travelHistory: trip.travelHistory,
+    })),
+    activeTripId,
   };
+}
+
+function makeTripId() {
+  return `trip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeTrip(raw, fallbackName) {
+  const locations = (raw?.locations || []).map(normalizeLoc);
+  const routes = (raw?.routes || []).map(normalizeRoute);
+  const trip = {
+    id: typeof raw?.id === 'string' && raw.id ? raw.id : makeTripId(),
+    name: typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim() : fallbackName,
+    visible: raw?.visible !== false,
+    locations, routes,
+    travelHistory: normalizeTravelHistory(raw?.travelHistory),
+  };
+  return trip;
+}
+
+function syncActiveTrip() {
+  const trip = trips.find(t => t.id === activeTripId);
+  if (!trip) return;
+  trip.locations = locations;
+  trip.routes = routes;
+  trip.travelHistory = travelHistory;
+}
+
+function setActiveTripState(trip) {
+  activeTripId = trip.id;
+  locations = trip.locations;
+  routes = trip.routes;
+  travelHistory = trip.travelHistory;
+}
+
+async function activateTrip(id) {
+  syncActiveTrip();
+  const trip = trips.find(t => t.id === id);
+  if (!trip) return;
+  setActiveTripState(trip);
+  clearSelection();
+  activeTab = 'pins';
+  await rebuildAll();
+  fitAll();
+  save();
+}
+
+function loadTripCollection(data) {
+  const d = Array.isArray(data) ? { locations: data, routes: [], settings: {} } : (data || {});
+  if (Array.isArray(d.trips)) {
+    trips = d.trips.map((trip, i) => normalizeTrip(trip, `Trip ${i + 1}`));
+  } else {
+    trips = [normalizeTrip(d, 'Trip 1')];
+  }
+  if (!trips.length) trips = [normalizeTrip({}, 'Trip 1')];
+  const requestedId = trips.some(t => t.id === d.activeTripId) ? d.activeTripId : trips[0].id;
+  setActiveTripState(trips.find(t => t.id === requestedId));
+  if (!Array.isArray(d.trips)) {
+    migrateLegacyRouteEmoji(d.routes, d.settings || {});
+    syncActiveTrip();
+  }
+  return d;
 }
 
 function normalizeTravelHistory(items) {
@@ -3413,11 +3548,7 @@ function migrateLegacyRouteEmoji(rawRoutes, settings) {
 }
 
 async function applyTripData(data, { persist = true } = {}) {
-  const d = Array.isArray(data) ? { locations: data, routes: [], settings: {} } : (data || {});
-  locations = (d.locations || []).map(normalizeLoc);
-  routes = (d.routes || []).map(normalizeRoute);
-  travelHistory = normalizeTravelHistory(d.travelHistory);
-  migrateLegacyRouteEmoji(d.routes, d.settings || {});
+  const d = loadTripCollection(data);
   applyTripSettings(d.settings || {}, { persist });
   clearSelection();
   await rebuildAll();
@@ -3428,12 +3559,12 @@ async function applyTripData(data, { persist = true } = {}) {
 function load() {
   try {
     const raw = localStorage.getItem('trip-mapper-v2');
-    if (!raw) return;
-    const d = JSON.parse(raw);
-    locations = (d.locations || []).map(normalizeLoc);
-    routes = (d.routes || []).map(normalizeRoute);
-    travelHistory = normalizeTravelHistory(d.travelHistory);
-    migrateLegacyRouteEmoji(d.routes, d.settings || {});
+    if (!raw) {
+      const trip = normalizeTrip({}, 'Trip 1');
+      trips = [trip]; setActiveTripState(trip);
+      return;
+    }
+    const d = loadTripCollection(JSON.parse(raw));
     applyTripSettings(d.settings || {}, { persist: false });
   } catch {}
 }
@@ -3456,24 +3587,65 @@ async function rebuildAll() {
   routeLayers.forEach((_, i) => clearRouteLayer(i));
   routeLayers = []; routeHitLayers = []; routeEmojiMarkers = [];
   buildTooltipStyles();
-  locations.forEach(addLocMarker);
-  for (let i = 0; i < routes.length; i++) await drawRoute(i);
+  const activeTrip = trips.find(trip => trip.id === activeTripId);
+  if (activeTrip?.visible !== false) {
+    locations.forEach(addLocMarker);
+    for (let i = 0; i < routes.length; i++) await drawRoute(i);
+  }
+  await rebuildPassiveTripLayers();
   renderLocList();
+}
+
+function clearPassiveTripLayers() {
+  passiveTripLayers.forEach(layer => map.removeLayer(layer));
+  passiveTripLayers.clear();
+}
+
+async function passiveRoutePoints(route, tripLocations) {
+  const from = tripLocations[route.fromIdx], to = tripLocations[route.toIdx];
+  if (!from || !to) return [];
+  if (route.shape === 'curve') return curvedPoints(from, to, route);
+  const routing = ROUTE_META[route.type]?.routing || '';
+  if (routing === 'greatcircle') return greatCirclePoints(from.lat, from.lng, to.lat, to.lng);
+  if (routing.startsWith('osrm-')) {
+    try { return await fetchOsrmPoints(routing.replace('osrm-', ''), from, to); } catch { /* fall through */ }
+  }
+  return [[from.lat, from.lng], [to.lat, to.lng]];
+}
+
+async function rebuildPassiveTripLayers() {
+  clearPassiveTripLayers();
+  for (const trip of trips) {
+    if (trip.id === activeTripId || trip.visible === false) continue;
+    const group = L.featureGroup().addTo(map);
+    trip.locations.forEach((loc, i) => {
+      const markerLoc = { ...loc, visitNumber: i + 1 };
+      const size = markerLoc.markerSize ?? 18;
+      const marker = L.marker([loc.lat, loc.lng], {
+        icon: L.divIcon({ className: 'passive-trip-marker', html: markerIconHtml(markerLoc), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
+        interactive: false, keyboard: false,
+      });
+      marker.addTo(group);
+    });
+    for (const route of trip.routes) {
+      if (onlyPins || route.hidden) continue;
+      const points = await passiveRoutePoints(route, trip.locations);
+      if (points.length) L.polyline(points, { ...polylineOpts(route), interactive: false }).addTo(group);
+    }
+    passiveTripLayers.set(trip.id, group);
+  }
 }
 
 // ── Add location with auto-route ──────────────────────────────────────────────
 function makeRoute(fromIdx, toIdx) {
   // New trip segments use the editable curved path by default. Existing saved
   // trips retain their own `shape` setting when they are loaded.
-  const route = { fromIdx, toIdx, type: nextRouteType, color: null, dash: 'solid', dashScale: 1, shape: 'curve', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
-  applyStyleKeys(route, lastRouteStyle, ROUTE_STYLE_KEYS);
+  const route = { fromIdx, toIdx, type: nextRouteType, color: DEFAULT_TRIP_NAVY, dash: 'dashed', dashScale: 1, shape: 'curve', weight: null, curveCtrl: null, hidden: false, emoji: false, emojiSize: 16, emojiBg: false };
   route.fromIdx = fromIdx;
   route.toIdx = toIdx;
   route.type = nextRouteType;
   route.curveCtrl = null;
   route.hidden = false;
-  const paletteColor = routePaletteColorForIndex(routes.length, route.type);
-  if (paletteColor !== undefined) route.color = paletteColor;
   return route;
 }
 
@@ -3481,6 +3653,9 @@ async function addLocationAuto(name, lat, lng) {
   const prevIdx = locations.length - 1;
   const locIdx  = locations.length;
   locations.push(locWithInheritedLabelStyle({ name, lat, lng }, locations[prevIdx]));
+  // The label stylesheet is indexed per stop, so add the new index before the
+  // marker opens its permanent tooltip.
+  buildTooltipStyles();
   addLocMarker(locations[locIdx], locIdx);
 
   if (prevIdx >= 0) {
@@ -3511,6 +3686,7 @@ async function revisitLocation(srcIdx) {
   // Drop the source's per-instance label nudge so the revisit gets a clean default.
   delete clone.labelOffsetX; delete clone.labelOffsetY; delete clone.labelWidth;
   locations.push(clone);
+  buildTooltipStyles();
   addLocMarker(clone, locIdx);
 
   if (prevIdx >= 0) {

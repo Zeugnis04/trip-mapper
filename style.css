@@ -306,10 +306,10 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 
 /* ── Left-panel tabs ── */
 #panel-tabs {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
   padding: 6px 8px; border-bottom: 1px solid var(--bg3);
 }
-.panel-tab-group { display: flex; gap: 3px; flex: 1; }
+.panel-tab-group { display: flex; gap: 3px; flex: 1 0 100%; }
 .panel-tab {
   flex: 1; padding: 5px 8px; border: none; border-radius: 5px;
   background: var(--bg2); color: var(--fg2); cursor: pointer;
@@ -324,6 +324,19 @@ input[type="text"]:focus, select:focus { outline: none; border-color: var(--acce
 }
 .panel-tab-tool:hover:not(.active) { background: var(--bg3); }
 .panel-tab-tool.active { background: var(--accent); color: #fff; }
+
+/* ── Trips layer manager ── */
+.trips-head { display: flex; gap: 6px; margin-bottom: 8px; }
+.trips-head .btn { flex: 1; }
+.trip-item { display: flex; align-items: center; gap: 6px; padding: 7px; margin-bottom: 5px; border: 1px solid var(--bg3); border-radius: 6px; background: var(--bg1); cursor: pointer; }
+.trip-item.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.trip-visibility { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: var(--bg2); color: var(--fg2); cursor: pointer; flex-shrink: 0; }
+.trip-visibility.active { color: var(--fg); background: var(--accent); }
+.trip-name { flex: 1; min-width: 0; padding: 3px; border: 0; background: transparent; color: var(--fg); cursor: pointer; text-align: left; font: inherit; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trip-name-input { flex: 1; min-width: 0; padding: 4px 5px; }
+.trip-meta { color: var(--fg2); font-size: 10px; white-space: nowrap; }
+.trip-delete { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--fg2); cursor: pointer; font: inherit; font-size: 17px; line-height: 1; }
+.trip-delete:hover { background: var(--red); color: #fff; }
 
 /* ── Routes tab ── */
 .routes-head { display: flex; padding: 2px 2px 8px; }
