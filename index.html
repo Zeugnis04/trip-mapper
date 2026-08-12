@@ -24,6 +24,7 @@
       <option value="light">Light</option>
       <option value="dark">Dark</option>
       <option value="osm">OSM</option>
+      <option value="opentopo">OpenTopoMap</option>
       <option value="light_min">Light (minimal)</option>
       <option value="dark_min">Dark (minimal)</option>
     </select>
@@ -84,6 +85,7 @@
   </div>
 </div>
 <div id="toast"></div>
+<button id="exit-view-only" class="btn" hidden>Exit view only</button>
 
 <!-- Embed modal -->
 <div id="embed-modal" class="modal-overlay" hidden>
@@ -158,6 +160,34 @@
     <div class="modal-footer">
       <button class="btn btn-accent" id="image-png-btn">Download PNG</button>
       <button class="btn" id="image-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- History image export modal -->
+<div id="history-image-modal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Export history image</span>
+      <button class="btn-icon modal-close" id="history-image-modal-close" title="Close">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-hint" style="margin-bottom:8px;">Exports saved History areas only; pins, routes, and labels are excluded.</p>
+      <label class="modal-label">Extent
+        <select id="history-image-extent">
+          <option value="canvas">Current canvas extent</option>
+          <option value="world">Whole world (−180° to 180°)</option>
+          <option value="east">Eastern hemisphere (0° to 180°)</option>
+        </select>
+      </label>
+      <label class="modal-checkbox" style="margin-top:10px;"><input type="checkbox" id="history-image-include-map" checked /> Include map background</label>
+      <label class="modal-checkbox" style="margin-top:6px;"><input type="checkbox" id="history-image-transparent" disabled /> Transparent background <span class="modal-hint">(when no map background)</span></label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-accent" id="history-image-png-btn">Download PNG</button>
+      <button class="btn" id="history-image-close-btn">Close</button>
     </div>
   </div>
 </div>

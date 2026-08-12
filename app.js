@@ -2,12 +2,14 @@
 const THEMES = {
   voyager: { url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
-  light:   { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  light: { url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
-  dark:    { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  dark: { url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
   osm:     { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors', sub: 'abc' },
+  opentopo: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+              attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)', sub: 'abc', maxZoom: 17 },
   // Minimal, label-free basemaps — closest keyless option to a plain outline map.
   light_min: { url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
                attr: '© <a href="https://openstreetmap.org/copyright">OSM</a> contributors, © <a href="https://carto.com/">CARTO</a>', sub: 'abcd' },
@@ -352,6 +354,10 @@ function setMapTheme(key) {
   if (tileLayer) map.removeLayer(tileLayer);
   // crossOrigin lets the loaded tiles be drawn into a canvas for image export.
   tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19, crossOrigin: true }).addTo(map);
+}
+function normalizeMapTheme(key) {
+  // Keep preferences saved while the CARTO style names were displayed.
+  return ({ positron: 'light', dark_matter: 'dark', positron_min: 'light_min', dark_matter_min: 'dark_min' })[key] || key;
 }
 
 // ── UI Theme ──────────────────────────────────────────────────────────────────
@@ -1276,6 +1282,10 @@ function addLocMarker(loc, locIdx) {
       const el = document.getElementById(`loc-item-${locIdx}`);
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, 30);
+  });
+  marker.on('dblclick', e => {
+    L.DomEvent.stop(e);
+    map.flyTo([loc.lat, loc.lng], 10);
   });
   locMarkers[locIdx] = { marker };
 }
@@ -2938,6 +2948,12 @@ function renderLocList() {
   rememberPanelScrollPositions(el);
 
   el.innerHTML = '';
+  const viewOnly = document.createElement('button');
+  viewOnly.className = 'btn panel-view-only';
+  viewOnly.textContent = 'View only';
+  viewOnly.title = 'Hide editing controls and show only the map';
+  viewOnly.addEventListener('click', enterViewOnly);
+  el.appendChild(viewOnly);
   if (activeTab === 'history') {
     renderHistoryList(el);
     renderSavedHistoryOverlays();
@@ -3154,15 +3170,21 @@ function renderHistoryList(el) {
   intro.textContent = 'Use Add from map, then pause over an area to preview it. Click for a province/state; double-click for a country.';
   el.appendChild(intro);
 
+  const historyToolbar = document.createElement('div'); historyToolbar.className = 'history-toolbar';
   const mapPick = document.createElement('button');
-  mapPick.className = 'btn btn-accent btn-full';
+  mapPick.className = 'btn btn-accent';
   mapPick.textContent = historyMapPick ? 'Cancel map selection' : 'Add from map';
   mapPick.addEventListener('click', () => {
     historyMapPick = !historyMapPick;
     if (!historyMapPick) clearAreaHover();
     renderLocList();
   });
-  el.appendChild(mapPick);
+  const exportImage = document.createElement('button');
+  exportImage.className = 'btn'; exportImage.textContent = 'Export image';
+  exportImage.disabled = !travelHistory.some(item => item.geometry);
+  exportImage.title = exportImage.disabled ? 'Add a saved area with a boundary before exporting.' : 'Export saved history areas as a PNG';
+  exportImage.addEventListener('click', () => { document.getElementById('history-image-modal').hidden = false; });
+  historyToolbar.append(mapPick, exportImage); el.appendChild(historyToolbar);
 
   if (selectedArea) {
     const card = document.createElement('div'); card.className = 'history-selection';
@@ -3506,7 +3528,7 @@ function normalizeTravelHistory(items) {
 
 function applyTripSettings(settings = {}, { persist = !IS_EMBED } = {}) {
   const uiTheme = settings.uiTheme || localStorage.getItem('trip-mapper-ui-theme') || 'dark';
-  const mapTheme = settings.mapTheme || localStorage.getItem('trip-mapper-map-theme') || 'voyager';
+  const mapTheme = normalizeMapTheme(settings.mapTheme || localStorage.getItem('trip-mapper-map-theme') || 'voyager');
   const labelFont = settings.labelFont || settings.font || localStorage.getItem('trip-mapper-label-font') || localStorage.getItem('trip-mapper-font') || 'Noto Sans KR';
   // Number font defaults to the label font so existing trips keep their look.
   const numberFont = settings.numberFont || localStorage.getItem('trip-mapper-number-font') || labelFont;
@@ -4133,6 +4155,57 @@ function downloadBlob(blob, name) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+function waitForBasemapTiles(timeoutMs = 8000) {
+  // html2canvas can run between Leaflet moving the map and its tile images
+  // painting, which produces an otherwise-valid PNG with a blank basemap.
+  if (!tileLayer || !map.hasLayer(tileLayer) || !tileLayer.isLoading?.()) return Promise.resolve();
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      tileLayer.off('load', finish);
+      resolve();
+    };
+    const timeout = setTimeout(finish, timeoutMs);
+    tileLayer.once('load', finish);
+  });
+}
+function afterNextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+function waitForVisibleTileImages(timeoutMs = 8000) {
+  const images = [...document.querySelectorAll('#map .leaflet-tile-pane img')];
+  if (!images.length) return Promise.resolve();
+  return new Promise(resolve => {
+    let pending = images.filter(image => !image.complete || !image.naturalWidth).length;
+    if (!pending) { resolve(); return; }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      images.forEach(image => { image.removeEventListener('load', done); image.removeEventListener('error', done); });
+      resolve();
+    };
+    const done = () => { if (--pending <= 0) finish(); };
+    const timeout = setTimeout(finish, timeoutMs);
+    images.forEach(image => {
+      if (!image.complete || !image.naturalWidth) {
+        image.addEventListener('load', done, { once: true });
+        image.addEventListener('error', done, { once: true });
+      }
+    });
+  });
+}
+async function waitForBasemapPaint() {
+  await waitForBasemapTiles();
+  await waitForVisibleTileImages();
+  // Browsers can mark an image complete just before its compositor paint.
+  await new Promise(resolve => setTimeout(resolve, 300));
+  await afterNextPaint();
+}
 async function exportTripPng(transparent, includeMap) {
   if (!locations.length) { toast('Nothing to export yet.'); return; }
   if (typeof html2canvas !== 'function') { toast('Image library not loaded.'); return; }
@@ -4144,6 +4217,9 @@ async function exportTripPng(transparent, includeMap) {
   if (!includeMap) hide(mapEl.querySelector('.leaflet-tile-pane'));
   try {
     await (document.fonts ? document.fonts.ready : Promise.resolve());
+    if (includeMap) {
+      await waitForBasemapPaint();
+    }
     const canvas = await html2canvas(mapEl, {
       useCORS: true,
       backgroundColor: includeMap ? null : (transparent ? null : '#ffffff'),
@@ -4168,6 +4244,122 @@ document.getElementById('image-modal-close').addEventListener('click', closeImag
 document.getElementById('image-close-btn').addEventListener('click', closeImageModal);
 imageModal.addEventListener('click', e => { if (e.target === imageModal) closeImageModal(); });
 document.getElementById('image-png-btn').addEventListener('click', () => { exportTripPng(imgTransparentEl.checked, imgIncludeMapEl.checked); closeImageModal(); });
+
+// ── History image export ─────────────────────────────────────────────────────
+// Captures only the saved History boundary pane.  The map view is restored after
+// exporting, so choosing a geographic extent never changes the user's workspace.
+function nextMapMove() {
+  return new Promise(resolve => map.once('moveend', resolve));
+}
+async function exportHistoryPng(extent, transparent, includeMap) {
+  if (!travelHistory.some(item => item.geometry)) { toast('Add a saved history area before exporting.'); return; }
+  if (typeof html2canvas !== 'function') { toast('Image library not loaded.'); return; }
+
+  const mapEl = document.getElementById('map');
+  const originalCenter = map.getCenter();
+  const originalZoom = map.getZoom();
+  const originalActiveTab = activeTab;
+  const hidden = [];
+  const hide = el => { if (el) { hidden.push([el, el.style.display]); el.style.display = 'none'; } };
+  const showHistory = () => {
+    activeTab = 'history';
+    renderSavedHistoryOverlays();
+  };
+  try {
+    showHistory();
+    // All non-history trip artwork lives in these standard Leaflet panes.
+    hide(mapEl.querySelector('.leaflet-control-container'));
+    hide(mapEl.querySelector('.leaflet-marker-pane'));
+    hide(mapEl.querySelector('.leaflet-shadow-pane'));
+    hide(mapEl.querySelector('.leaflet-tooltip-pane'));
+    hide(mapEl.querySelector('.leaflet-overlay-pane'));
+    hide(mapEl.querySelector('.country-selection'));
+    hide(mapEl.querySelector('#area-hover'));
+    if (!includeMap) hide(mapEl.querySelector('.leaflet-tile-pane'));
+
+    if (extent === 'world') {
+      const moved = nextMapMove();
+      map.fitBounds([[-85, -180], [85, 180]], { padding: [0, 0], animate: false });
+      await moved;
+    } else if (extent === 'east') {
+      const moved = nextMapMove();
+      map.fitBounds([[-85, 0], [85, 180]], { padding: [0, 0], animate: false });
+      await moved;
+    }
+    await (document.fonts ? document.fonts.ready : Promise.resolve());
+    if (includeMap) {
+      await waitForBasemapPaint();
+    }
+    const canvas = await html2canvas(mapEl, {
+      useCORS: true,
+      backgroundColor: includeMap ? null : (transparent ? null : '#ffffff'),
+      scale: Math.min(Math.max(window.devicePixelRatio || 1, 1), 3),
+      logging: false,
+    });
+    canvas.toBlob(blob => { if (blob) downloadBlob(blob, 'trip-history-map.png'); else toast('Export failed.'); }, 'image/png');
+  } catch (err) {
+    toast('History image export failed: ' + (err?.message || err));
+  } finally {
+    hidden.forEach(([el, display]) => { el.style.display = display; });
+    if (extent !== 'canvas') {
+      const moved = nextMapMove();
+      map.setView(originalCenter, originalZoom, { animate: false });
+      await moved;
+    }
+    activeTab = originalActiveTab;
+    if (originalActiveTab !== 'history' && historyOverlayLayer) { map.removeLayer(historyOverlayLayer); historyOverlayLayer = null; }
+  }
+}
+const historyImageModal = document.getElementById('history-image-modal');
+const historyImageIncludeMapEl = document.getElementById('history-image-include-map');
+const historyImageTransparentEl = document.getElementById('history-image-transparent');
+historyImageIncludeMapEl.addEventListener('change', () => { historyImageTransparentEl.disabled = historyImageIncludeMapEl.checked; });
+function closeHistoryImageModal() { historyImageModal.hidden = true; }
+document.getElementById('history-image-modal-close').addEventListener('click', closeHistoryImageModal);
+document.getElementById('history-image-close-btn').addEventListener('click', closeHistoryImageModal);
+historyImageModal.addEventListener('click', e => { if (e.target === historyImageModal) closeHistoryImageModal(); });
+document.getElementById('history-image-png-btn').addEventListener('click', () => {
+  exportHistoryPng(document.getElementById('history-image-extent').value, historyImageTransparentEl.checked, historyImageIncludeMapEl.checked);
+  closeHistoryImageModal();
+});
+
+// ── View-only map mode ───────────────────────────────────────────────────────
+const exitViewOnlyButton = document.getElementById('exit-view-only');
+let viewOnlyExitTimer = null;
+function showViewOnlyExit() {
+  if (!document.body.classList.contains('view-only')) return;
+  clearTimeout(viewOnlyExitTimer);
+  exitViewOnlyButton.hidden = false;
+}
+function scheduleViewOnlyExitHide() {
+  clearTimeout(viewOnlyExitTimer);
+  viewOnlyExitTimer = setTimeout(() => { exitViewOnlyButton.hidden = true; }, 1400);
+}
+function enterViewOnly() {
+  if (pickMode) exitPickMode();
+  document.body.classList.add('view-only');
+  showViewOnlyExit();
+  scheduleViewOnlyExitHide();
+  requestAnimationFrame(() => map.invalidateSize());
+}
+function exitViewOnly() {
+  clearTimeout(viewOnlyExitTimer);
+  document.body.classList.remove('view-only');
+  exitViewOnlyButton.hidden = true;
+  requestAnimationFrame(() => map.invalidateSize());
+}
+exitViewOnlyButton.addEventListener('click', exitViewOnly);
+exitViewOnlyButton.addEventListener('mouseenter', showViewOnlyExit);
+exitViewOnlyButton.addEventListener('mouseleave', scheduleViewOnlyExitHide);
+document.addEventListener('mousemove', e => {
+  if (!document.body.classList.contains('view-only')) return;
+  // A generous corner hotspot keeps the control discoverable after it fades.
+  if (e.clientX <= 180 && e.clientY >= window.innerHeight - 120) showViewOnlyExit();
+  else scheduleViewOnlyExitHide();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.classList.contains('view-only')) exitViewOnly();
+});
 
 // ── Travel history ───────────────────────────────────────────────────────────
 const HISTORY_STATUS_LABELS = { visited: 'Traveled', stopped: 'Stopped by', passed: 'Passed through', lived: 'Lived' };

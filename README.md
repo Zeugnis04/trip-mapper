@@ -7,6 +7,11 @@ have visited, stopped by, or passed through. Click the map to select a
 province/state, or double-click to select a country. History is saved with the
 trip and is included in exported JSON.
 
+History can also be exported as a PNG independently of pins and routes. Its
+export menu supports the current canvas, the whole world (−180° to 180°), and
+the eastern hemisphere (0° to 180°). Each Pins, Routes, and History tab also
+has a **View only** control that expands the map and hides the editing UI.
+
 ## Install as a Chrome extension
 
 **From a release (easiest):** download `trip-mapper-extension.zip` from the
