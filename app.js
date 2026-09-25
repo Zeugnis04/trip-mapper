@@ -350,10 +350,14 @@ map.createPane('history-overlay');
 map.getPane('history-overlay').style.zIndex = 330;
 let tileLayer = null;
 function setMapTheme(key) {
-  const t = THEMES[key] || THEMES.voyager;
+  const requested = THEMES[key] || THEMES.voyager;
+  const isCarto = requested.url.includes('basemaps.cartocdn.com');
+  const cartoKey = typeof window.TRIP_MAPPER_CARTO_KEY === 'string' ? window.TRIP_MAPPER_CARTO_KEY.trim() : '';
+  const t = isCarto && !cartoKey ? THEMES.osm : requested;
   if (tileLayer) map.removeLayer(tileLayer);
   // crossOrigin lets the loaded tiles be drawn into a canvas for image export.
-  tileLayer = L.tileLayer(t.url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19, crossOrigin: true }).addTo(map);
+  const url = isCarto && cartoKey ? `${t.url}?key=${encodeURIComponent(cartoKey)}` : t.url;
+  tileLayer = L.tileLayer(url, { attribution: t.attr, subdomains: t.sub, maxZoom: t.maxZoom ?? 19, crossOrigin: true }).addTo(map);
 }
 function normalizeMapTheme(key) {
   // Keep preferences saved while the CARTO style names were displayed.

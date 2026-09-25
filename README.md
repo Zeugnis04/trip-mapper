@@ -31,6 +31,22 @@ Leaflet is vendored locally under `vendor/leaflet/`, so the app loads without a
 CDN. Map tiles, geocoding (Nominatim), and routing (OSRM) still require a network
 connection. The extension requests no special permissions.
 
+### CARTO basemap key
+
+Voyager, Light, Dark, and the minimal map styles use CARTO raster tiles, which
+now require a [CARTO Basemaps key](https://carto.com/basemaps/apikey/). To use
+those styles locally, create an ignored `carto-config.local.js` beside
+`index.html` containing:
+
+```js
+window.TRIP_MAPPER_CARTO_KEY = 'your-own-key';
+```
+
+The key is sent directly to CARTO with tile requests. Without this file, CARTO
+styles display the OSM basemap instead. OSM and OpenTopoMap need no CARTO key.
+For a hosted copy or packaged extension, include your own config file in that
+deployment; it is intentionally excluded from Git.
+
 ## Custom & local fonts
 
 The **Label Font** menu lists bundled web fonts plus the **`+`** button beside it,

@@ -2,3 +2,4 @@ node_modules/
 /dist/
 trip-mapper.json
 sample-embed.html
+carto-config.local.js
