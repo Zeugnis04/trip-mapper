@@ -34,18 +34,11 @@ connection. The extension requests no special permissions.
 ### CARTO basemap key
 
 Voyager, Light, Dark, and the minimal map styles use CARTO raster tiles, which
-now require a [CARTO Basemaps key](https://carto.com/basemaps/apikey/). To use
-those styles locally, create an ignored `carto-config.local.js` beside
-`index.html` containing:
-
-```js
-window.TRIP_MAPPER_CARTO_KEY = 'your-own-key';
-```
-
-The key is sent directly to CARTO with tile requests. Without this file, CARTO
-styles display the OSM basemap instead. OSM and OpenTopoMap need no CARTO key.
-For a hosted copy or packaged extension, include your own config file in that
-deployment; it is intentionally excluded from Git.
+now require a [CARTO Basemaps key](https://carto.com/basemaps/apikey/). The
+project key is in `carto-config.js`, loaded before `app.js` and included in the
+extension release. It is visible to anyone using the website or extension, as
+with any browser-side tile key. OSM and OpenTopoMap need no CARTO key. If you
+remove the project key, CARTO styles display the OSM basemap instead.
 
 ## Custom & local fonts
 

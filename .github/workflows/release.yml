@@ -18,7 +18,7 @@ jobs:
       - name: Stage extension files
         run: |
           mkdir -p dist/trip-mapper
-          cp -r manifest.json background.js index.html app.js style.css icons vendor README.md dist/trip-mapper/
+          cp -r manifest.json background.js index.html app.js carto-config.js style.css icons vendor README.md dist/trip-mapper/
 
       - name: Create zip
         run: |
